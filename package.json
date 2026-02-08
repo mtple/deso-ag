@@ -2,16 +2,23 @@
   "name": "deso-ag",
   "version": "1.0.0",
   "description": "CLI tool for aggregating posts from decentralized social protocols (Lens, Nostr, Farcaster)",
-  "main": "dist/index.js",
+  "main": "dist/lib.js",
   "bin": {
     "deso-ag": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/lib.js",
+      "types": "./dist/lib.d.ts"
+    }
   },
   "type": "module",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "test": "tsx src/index.ts trending -l 3"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "farcaster",
@@ -37,6 +44,8 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
-  }
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.18"
+  },
+  "packageManager": "pnpm@10.23.0+sha512.21c4e5698002ade97e4efe8b8b4a89a8de3c85a37919f957e7a0f30f38fbc5bbdd05980ffe29179b2fb6e6e691242e098d945d1601772cad0fef5fb6411e2a4b"
 }

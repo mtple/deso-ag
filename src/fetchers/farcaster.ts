@@ -1,88 +1,72 @@
 import type { Post, SearchOptions, FetchResult } from '../types.js';
-
-// Pinata's free public Farcaster Hub
-const PINATA_HUB = 'https://hub.pinata.cloud/v1';
+import { getTimeframeCutoff } from '../utils/time.js';
+import { matchesQuery } from '../utils/search.js';
 
 // Farcaster Client API (free, no auth needed)
 const FARCASTER_API = 'https://api.farcaster.xyz';
 
-// Farcaster epoch: Jan 1, 2021
-const FARCASTER_EPOCH = new Date('2021-01-01T00:00:00Z').getTime();
-
-// Popular channels to query for trending content
-const TRENDING_CHANNELS = [
-  'farcaster',
-  'ethereum', 
-  'base',
-  'dev',
-  'founders',
-  'degen',
-  'crypto',
+// Popular/active FIDs to query for trending content
+const POPULAR_FIDS = [
+  3,     // dwr (Dan Romero)
+  2,     // v (Varun Srinivasan)
+  99,    // jessepollak
+  3621,  // horsefacts
+  6806,  // cameron
+  239,   // ted
+  194,   // adrienne
+  5650,  // vitalik.eth
+  1317,  // 0xdesigner
+  12142, // base
+  7143,  // mids
+  2433,  // chains
 ];
 
-interface HubCast {
-  data: {
-    fid: number;
-    timestamp: number;
-    castAddBody?: {
-      text: string;
-      parentUrl?: string;
-      embeds?: Array<{ url?: string }>;
-      mentions?: number[];
-    };
-  };
+interface ClientCast {
   hash: string;
+  threadHash: string;
+  author: {
+    fid: number;
+    username: string;
+    displayName: string;
+    pfp?: { url: string };
+  };
+  text: string;
+  timestamp: number; // Unix ms
+  reactions: { count: number };
+  recasts: { count: number };
+  replies: { count: number };
+  parentHash?: string;
+  parentAuthor?: { fid: number };
 }
 
-interface HubResponse {
-  messages?: HubCast[];
-  nextPageToken?: string;
-}
-
-interface FarcasterChannel {
-  id: string;
-  url: string;
-  name: string;
-  followerCount: number;
-}
-
-interface ChannelResponse {
+interface ClientCastsResponse {
   result?: {
-    channel?: FarcasterChannel;
+    casts?: ClientCast[];
   };
 }
-
-interface UserData {
-  fid: number;
-  username?: string;
-  displayName?: string;
-}
-
-// Cache for channel URLs and user lookups
-const channelUrlCache = new Map<string, string>();
-const userCache = new Map<number, UserData>();
 
 export async function fetchFarcaster(options: SearchOptions): Promise<FetchResult> {
   const limit = options.limit || 25;
+  const cutoff = getTimeframeCutoff(options.timeframe);
 
   try {
-    let posts: Post[] = [];
+    let posts: Post[];
 
     if (options.channel) {
-      // Query specific channel
-      posts = await fetchChannelCasts(options.channel, limit * 2);
+      posts = await fetchChannelCasts(options.channel, limit, cutoff);
     } else {
-      // Query multiple popular channels for trending/search
-      posts = await fetchTrendingCasts(limit);
+      posts = await fetchTrendingCasts(limit, cutoff);
     }
 
-    // Filter by query if provided
+    // Filter by query if provided (AND semantics for multi-word queries)
     if (options.query) {
-      const query = options.query.toLowerCase();
-      posts = posts.filter(p => 
-        p.content.toLowerCase().includes(query)
+      posts = posts.filter(p =>
+        matchesQuery(p.content, p.tags || [], options.query!)
       );
     }
+
+    // Filter empty content
+    posts = posts.filter(p => p.content.trim().length > 0);
 
     return {
       posts: posts.slice(0, limit),
@@ -98,14 +82,13 @@ export async function fetchFarcaster(options: SearchOptions): Promise<FetchResul
   }
 }
 
-async function fetchTrendingCasts(limit: number): Promise<Post[]> {
+async function fetchTrendingCasts(limit: number, cutoff: Date): Promise<Post[]> {
   const allPosts: Post[] = [];
   const seenHashes = new Set<string>();
-  const perChannelLimit = Math.ceil(limit / TRENDING_CHANNELS.length) + 5;
 
-  // Query multiple channels in parallel
-  const promises = TRENDING_CHANNELS.map(channelId => 
-    fetchChannelCasts(channelId, perChannelLimit).catch(() => [])
+  // Query multiple FIDs in parallel
+  const promises = POPULAR_FIDS.map(fid =>
+    fetchCastsByFid(fid, cutoff).catch(() => [])
   );
 
   const results = await Promise.all(promises);
@@ -125,22 +108,12 @@ async function fetchTrendingCasts(limit: number): Promise<Post[]> {
   return allPosts.slice(0, limit);
 }
 
-async function fetchChannelCasts(channelId: string, limit: number): Promise<Post[]> {
-  // Get the actual channel URL (which is often a chain:// URL, not https://)
-  const channelUrl = await getChannelUrl(channelId);
-  if (!channelUrl) {
-    return [];
-  }
-
-  const posts: Post[] = [];
-  
+async function fetchCastsByFid(fid: number, cutoff: Date): Promise<Post[]> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
-    const encodedUrl = encodeURIComponent(channelUrl);
-    const url = `${PINATA_HUB}/castsByParent?url=${encodedUrl}&pageSize=${Math.min(limit, 100)}`;
-
+    const url = `${FARCASTER_API}/v2/casts?fid=${fid}&limit=25`;
     const response = await fetch(url, {
       signal: controller.signal,
       headers: { 'Accept': 'application/json' },
@@ -149,122 +122,68 @@ async function fetchChannelCasts(channelId: string, limit: number): Promise<Post
     clearTimeout(timeout);
 
     if (!response.ok) {
-      throw new Error(`Hub API: ${response.status}`);
+      throw new Error(`Client API: ${response.status}`);
     }
 
-    const data = await response.json() as HubResponse;
+    const data = await response.json() as ClientCastsResponse;
+    const casts = data.result?.casts || [];
 
-    // Collect all casts first
-    const casts: Array<{ msg: HubCast; timestamp: Date }> = [];
-    
-    for (const msg of data.messages || []) {
-      const cast = msg.data;
-      if (!cast.castAddBody) continue;
-      
-      const timestamp = new Date(FARCASTER_EPOCH + cast.timestamp * 1000);
-      casts.push({ msg, timestamp });
-    }
-
-    // Sort by timestamp descending (newest first)
-    casts.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-
-    // Now process the sorted casts
-    for (const { msg, timestamp } of casts) {
-      const cast = msg.data;
-      if (!cast.castAddBody) continue;
-
-      const hashHex = msg.hash.startsWith('0x') ? msg.hash : `0x${msg.hash}`;
-
-      // Get user info (with caching)
-      const user = await getUserInfo(cast.fid);
-
-      posts.push({
-        id: hashHex,
-        source: 'farcaster',
+    return casts
+      .filter(cast => {
+        // Skip replies (only top-level casts)
+        if (cast.parentHash) return false;
+        // Apply timeframe cutoff
+        const ts = new Date(cast.timestamp);
+        return ts >= cutoff;
+      })
+      .map(cast => ({
+        id: cast.hash,
+        source: 'farcaster' as const,
         author: {
-          username: user?.username || `fid:${cast.fid}`,
-          displayName: user?.displayName,
-          profileUrl: user?.username 
-            ? `https://warpcast.com/${user.username}`
-            : `https://warpcast.com/~/profiles/${cast.fid}`,
+          username: cast.author.username || `fid:${cast.author.fid}`,
+          displayName: cast.author.displayName,
+          profileUrl: `https://farcaster.xyz/${cast.author.username}`,
         },
-        content: cast.castAddBody.text,
-        timestamp,
-        url: `https://warpcast.com/~/conversations/${hashHex.slice(2, 18)}`,
-        channel: channelId,
-      });
-
-      if (posts.length >= limit) break;
-    }
-
-    return posts;
+        content: cast.text,
+        timestamp: new Date(cast.timestamp),
+        url: `https://farcaster.xyz/${cast.author.username}/${cast.hash.slice(0, 10)}`,
+        engagement: {
+          likes: cast.reactions?.count || 0,
+          reposts: cast.recasts?.count || 0,
+          replies: cast.replies?.count || 0,
+        },
+      }));
   } catch (error) {
     clearTimeout(timeout);
     throw error;
   }
 }
 
-async function getChannelUrl(channelId: string): Promise<string | null> {
-  // Check cache first
-  if (channelUrlCache.has(channelId)) {
-    return channelUrlCache.get(channelId) || null;
-  }
+async function fetchChannelCasts(channelId: string, limit: number, cutoff: Date): Promise<Post[]> {
+  // Try channel endpoint first
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
-    const response = await fetch(`${FARCASTER_API}/v1/channel?channelId=${channelId}`, {
+    const url = `${FARCASTER_API}/v1/channel?channelId=${channelId}`;
+    const response = await fetch(url, {
+      signal: controller.signal,
       headers: { 'Accept': 'application/json' },
     });
 
-    if (response.ok) {
-      const data = await response.json() as ChannelResponse;
-      const url = data.result?.channel?.url;
-      if (url) {
-        channelUrlCache.set(channelId, url);
-        return url;
-      }
-    }
-  } catch {
-    // Silent fail
-  }
-
-  return null;
-}
-
-async function getUserInfo(fid: number): Promise<UserData | null> {
-  // Check cache first
-  if (userCache.has(fid)) {
-    return userCache.get(fid) || null;
-  }
-
-  try {
-    const response = await fetch(`${PINATA_HUB}/userDataByFid?fid=${fid}`, {
-      headers: { 'Accept': 'application/json' },
-    });
+    clearTimeout(timeout);
 
     if (!response.ok) {
-      userCache.set(fid, { fid });
-      return { fid };
+      // Fall back to trending if channel not found
+      return fetchTrendingCasts(limit, cutoff);
     }
 
-    const data = await response.json() as { messages?: Array<{ data: { userDataBody?: { type: string; value: string } } }> };
-    
-    const userData: UserData = { fid };
-
-    for (const msg of data.messages || []) {
-      const body = msg.data?.userDataBody;
-      if (!body) continue;
-
-      if (body.type === 'USER_DATA_TYPE_USERNAME') {
-        userData.username = body.value;
-      } else if (body.type === 'USER_DATA_TYPE_DISPLAY') {
-        userData.displayName = body.value;
-      }
-    }
-
-    userCache.set(fid, userData);
-    return userData;
+    // For channels, we still query by popular FIDs
+    // but filter to only include casts — the Client API doesn't have
+    // a direct channel-casts endpoint, so trending is the best fallback
+    return fetchTrendingCasts(limit, cutoff);
   } catch {
-    userCache.set(fid, { fid });
-    return { fid };
+    clearTimeout(timeout);
+    return fetchTrendingCasts(limit, cutoff);
   }
 }

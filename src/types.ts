@@ -1,6 +1,7 @@
 export type Source = 'farcaster' | 'lens' | 'nostr';
 export type Timeframe = '24h' | '48h' | 'week';
-export type OutputFormat = 'json' | 'markdown' | 'summary';
+export type OutputFormat = 'json' | 'markdown' | 'summary' | 'compact';
+export type SortOrder = 'engagement' | 'recent' | 'relevance';
 
 export interface Post {
   id: string;
@@ -28,10 +29,41 @@ export interface SearchOptions {
   timeframe: Timeframe;
   channel?: string;
   limit?: number;
+  sort?: SortOrder;
 }
 
 export interface FetchResult {
   posts: Post[];
   source: Source;
   error?: string;
+}
+
+export interface AggregateResult {
+  posts: Post[];
+  meta: {
+    query?: string;
+    sources: { name: Source; count: number; error?: string }[];
+    timeframe: string;
+    fetchedAt: string;
+    totalPosts: number;
+  };
+}
+
+export interface Term {
+  token: string;
+  score: number;
+  postCount: number;
+}
+
+export interface SourceTerms {
+  source: Source;
+  postCount: number;
+  terms: Term[];
+}
+
+export interface TermsResult {
+  bySource: SourceTerms[];
+  overall: Term[];
+  timeframe: string;
+  analyzedAt: string;
 }
