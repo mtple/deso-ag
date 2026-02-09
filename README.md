@@ -2,23 +2,9 @@
 
 **Decentralized Social Aggregator** - A CLI tool and library for aggregating posts from decentralized social protocols.
 
-Search and view content across **Farcaster**, **Lens**, and **Nostr** from your terminal or programmatically from your agent. No API keys required.
+Search and view content across **Farcaster**, **Lens**, and **Nostr** from your terminal or programmatically from your agent.
 
-## Features
-
-- **Search** across all three protocols simultaneously
-- **Trending** posts from popular channels and relays
-- **Terms** — extract top discussion terms per platform via engagement-weighted frequency analysis
-- **Browse** Farcaster channels
-- **Multiple output formats**: JSON, Markdown, Summary, Compact (agent-optimized)
-- **Sorting**: by engagement, recency, or relevance
-- **Multi-word search** with AND semantics
-- **Cross-source deduplication**
-- **Library API** via `aggregate()` for programmatic use
-- **Zero configuration** - works out of the box
-- **No API keys required** - uses free public endpoints
-
-## Installation
+## Setup
 
 ```bash
 git clone https://github.com/sphairetra/deso-ag
@@ -26,21 +12,28 @@ cd deso-ag
 pnpm install
 ```
 
-## Usage
+### Environment Variables
 
-### Trending Posts
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEYNAR_API_KEY` | Yes (for Farcaster) | Neynar API key. Get one free at [neynar.com](https://neynar.com) |
 
-Get trending posts from all networks:
+Lens and Nostr work without any keys.
+
+Add the key to your shell profile so it persists across sessions:
 
 ```bash
-pnpm dev trending
-pnpm dev trending --sources farcaster,lens
-pnpm dev trending --format json --limit 50
+# Add to ~/.zshrc or ~/.bashrc
+export NEYNAR_API_KEY=your-key-here
 ```
 
-### Search
+Without the key, Farcaster is skipped and other sources still work normally.
 
-Search for posts across networks:
+## Commands
+
+### `search [query]`
+
+Search for posts across networks.
 
 ```bash
 pnpm dev search "ethereum"
@@ -51,29 +44,33 @@ pnpm dev search --channel dev --sources farcaster
 Multi-word queries use AND semantics (all terms must match):
 
 ```bash
-pnpm dev search "AI crypto"
+pnpm dev search "AI crypto"       # posts must contain both "AI" and "crypto"
 pnpm dev search "ethereum layer2"
 ```
 
-### Terms
+### `trending`
 
-Extract top discussion terms from posts:
+Get trending posts from all networks.
 
 ```bash
-# Top 3 terms per platform from the last 24h
-pnpm dev terms
-
-# Top 5 terms, only Farcaster, last week
-pnpm dev terms -n 5 -s farcaster -t week
-
-# Machine-readable for agents
-pnpm dev terms -f compact
-pnpm dev terms -f json
+pnpm dev trending
+pnpm dev trending --sources farcaster,lens
+pnpm dev trending --format json --limit 50
 ```
 
-### List Channels
+### `terms`
 
-Browse popular Farcaster channels:
+Extract top discussion terms from posts via engagement-weighted frequency analysis.
+
+```bash
+pnpm dev terms                              # top 3 terms per platform, last 24h
+pnpm dev terms -n 5 -s farcaster -t week    # top 5, Farcaster only, last week
+pnpm dev terms -f json                      # machine-readable output
+```
+
+### `channels`
+
+Browse popular Farcaster channels.
 
 ```bash
 pnpm dev channels
@@ -82,15 +79,30 @@ pnpm dev channels --limit 50
 
 ## Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-s, --sources` | Networks to query (farcaster,lens,nostr) | all |
-| `-t, --timeframe` | Time range (24h, 48h, week) | 24h |
-| `-c, --channel` | Filter by channel (Farcaster only) | — |
-| `-f, --format` | Output format (json, markdown, summary, compact) | markdown |
-| `-l, --limit` | Max posts to fetch per source (e.g. `-l 10` fetches up to 10 posts from each network) | 25 |
-| `-o, --sort` | Sort order (engagement, recent, relevance) | relevance (search) / engagement (trending) |
-| `-n, --top` | Number of top terms to return per source (terms command only) | 3 |
+All commands accept the following options (except where noted):
+
+| Option | Description | Values | Default |
+|--------|-------------|--------|---------|
+| `-s, --sources` | Networks to query | `farcaster`, `lens`, `nostr` (comma-separated) | `farcaster,lens,nostr` (all) |
+| `-t, --timeframe` | Time range for posts | `24h`, `48h`, `week` | `24h` |
+| `-c, --channel` | Filter by channel | Any channel ID (Farcaster only) | none |
+| `-f, --format` | Output format | `json`, `markdown`, `summary`, `compact` | `markdown` (search), `summary` (trending) |
+| `-l, --limit` | Max posts per source | Any positive integer | `25` |
+| `-o, --sort` | Sort order | `engagement`, `recent`, `relevance` | `relevance` (search), `engagement` (trending) |
+| `-n, --top` | Top terms per source | Any positive integer (terms command only) | `3` |
+
+### Output Formats
+
+- **`markdown`** - Human-readable with headers, author info, and engagement stats. Default for `search`.
+- **`summary`** - Condensed overview with post counts and top content. Default for `trending`.
+- **`json`** - Raw JSON array of post objects. Good for piping to other tools.
+- **`compact`** - Single JSON object with metadata envelope, engagement scores, and full content. Designed for AI agents.
+
+### Sort Orders
+
+- **`engagement`** - By score (`likes + reposts*2 + replies`). Best for discovering high-signal content. Default for `trending`.
+- **`recent`** - By timestamp descending. Best for monitoring.
+- **`relevance`** - Query-matching posts first, then by engagement. Default for `search`.
 
 ## Agent Usage
 
@@ -98,14 +110,14 @@ deso-ag is designed for consumption by AI agents doing research across decentral
 
 ### Compact Output Format
 
-The `compact` format returns a single JSON object with a metadata envelope, pre-computed engagement scores, full untruncated content, and source health info. Use it when your agent needs structured, machine-readable output:
+The `compact` format returns a single JSON object with a metadata envelope, pre-computed engagement scores, full untruncated content, and source health info:
 
 ```bash
 pnpm dev trending -f compact -l 10
 pnpm dev search "AI agents" -f compact -l 10
 ```
 
-The output shape:
+Output shape:
 
 ```json
 {
@@ -135,14 +147,6 @@ The output shape:
   ]
 }
 ```
-
-### Sort Order
-
-Use `--sort` (`-o`) to control post ordering:
-
-- `engagement` - by score (`likes + reposts*2 + replies`), best for discovering high-signal content
-- `recent` - by timestamp descending, best for monitoring
-- `relevance` - query-matching posts first, then by engagement (search default)
 
 ### Library Import
 
@@ -181,7 +185,7 @@ for (const st of result.bySource) {
 }
 ```
 
-Individual fetchers and utilities are also exported for granular use:
+Individual fetchers and utilities are also exported:
 
 ```typescript
 import { fetchFarcaster, fetchLens, fetchNostr, computeEngagementScore, matchesQuery, extractTerms } from 'deso-ag';
@@ -196,7 +200,7 @@ pnpm dev trending -f summary -l 20
 # Agent-optimized compact output sorted by engagement
 pnpm dev trending -f compact -o engagement -l 10
 
-# Search for AI discussions on Lens
+# Search for AI discussions on Lens only
 pnpm dev search "AI" -s lens -f json
 
 # Multi-word search with compact output
@@ -220,38 +224,25 @@ pnpm dev terms -f json -s farcaster,nostr -l 10
 
 ## Supported Networks
 
-### Farcaster
-- Uses the [Farcaster Client API](https://api.farcaster.xyz) (`v2/casts`) for real-time data
-- Queries popular accounts (dwr, v, jessepollak, vitalik.eth, etc.) in parallel
-- Returns full engagement stats (likes, recasts, replies)
-- Timeframe filtering (24h, 48h, week)
+| Network | API | Auth |
+|---------|-----|------|
+| **Farcaster** | [Neynar API](https://neynar.com) - trending feed and full-text search | `NEYNAR_API_KEY` required |
+| **Lens** | [Lens V3 GraphQL API](https://api.lens.xyz) - server-side search, recent posts | None |
+| **Nostr** | [nostr.wine trending API](https://docs.nostr.wine/api/trending) + public relays (relay.damus.io, nos.lol, relay.snort.social) | None |
 
-### Lens
-- Uses [Lens V3 GraphQL API](https://api.lens.xyz)
-- Server-side search filtering via `searchQuery` when a query is provided
-- Fetches recent posts with engagement stats
-- No API key needed
-
-### Nostr
-- Uses [nostr.wine trending API](https://docs.nostr.wine/api/trending) for popular posts with engagement stats
-- Fetches full event content from public relays (relay.damus.io, nos.lol, relay.snort.social)
-- Fetches profiles for author resolution
-- Hashtag extraction from event tags
+All networks return engagement stats (likes, reposts, replies) and support timeframe filtering.
 
 ## Limitations
 
-- **Farcaster**: Trending results are sourced from a curated list of popular accounts. For broader coverage, consider using [Neynar](https://neynar.com).
+- **Farcaster**: Requires `NEYNAR_API_KEY`. Without it, Farcaster is skipped.
 - **Nostr**: Relay responses can be slow or inconsistent depending on network conditions.
 - **Rate limits**: All APIs have rate limits. For heavy usage, consider running your own infrastructure.
 
 ## Development
 
 ```bash
-# Build for production
-pnpm build
-
-# Test
-pnpm test
+pnpm build    # Build for production
+pnpm test     # Run tests
 ```
 
 ## Tech Stack

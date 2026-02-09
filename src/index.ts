@@ -196,7 +196,6 @@ program
 
     if (allPosts.length === 0) {
       console.error('No posts found to analyze.\n');
-      return;
     }
 
     const termsResult = extractTermsBySource(allPosts, topN, timeframe);
