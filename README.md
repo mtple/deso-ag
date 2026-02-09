@@ -14,11 +14,11 @@ pnpm install
 
 ### Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `NEYNAR_API_KEY` | Yes (for Farcaster) | Neynar API key. Get one free at [neynar.com](https://neynar.com) |
-| `BLUESKY_IDENTIFIER` | For Bluesky search | Your Bluesky handle (e.g. `user.bsky.social`) |
-| `BLUESKY_APP_PASSWORD` | For Bluesky search | App password from [bsky.app/settings/app-passwords](https://bsky.app/settings/app-passwords) |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `NEYNAR_API_KEY` | For Farcaster | None — Farcaster is skipped | Neynar API key. Get one free at [neynar.com](https://neynar.com) |
+| `BLUESKY_IDENTIFIER` | For Bluesky search | None — Bluesky search is skipped, trending still works | Your Bluesky handle (e.g. `user.bsky.social`) |
+| `BLUESKY_APP_PASSWORD` | For Bluesky search | None — Bluesky search is skipped, trending still works | App password from [bsky.app/settings/app-passwords](https://bsky.app/settings/app-passwords) |
 
 Lens, Nostr, and Bluesky trending work without any keys. Bluesky search requires authentication.
 
@@ -31,7 +31,7 @@ export BLUESKY_IDENTIFIER=your-handle.bsky.social
 export BLUESKY_APP_PASSWORD=your-app-password
 ```
 
-Without credentials, the respective source is skipped and other sources still work normally.
+Without a key, the respective source/feature is skipped and everything else still works normally.
 
 ## Commands
 
