@@ -4,7 +4,19 @@
 
 Search and view content across **Farcaster**, **Lens**, **Nostr**, and **Bluesky** from your terminal or programmatically from your agent.
 
-## Setup
+## Installation
+
+```bash
+npm install deso-ag
+```
+
+Or to use as a CLI globally:
+
+```bash
+npm install -g deso-ag
+```
+
+### From Source
 
 ```bash
 git clone https://github.com/sphairetra/deso-ag
