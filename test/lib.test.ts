@@ -12,16 +12,21 @@ vi.mock('../src/fetchers/lens.js', () => ({
 vi.mock('../src/fetchers/nostr.js', () => ({
   fetchNostr: vi.fn(),
 }));
+vi.mock('../src/fetchers/bluesky.js', () => ({
+  fetchBluesky: vi.fn(),
+}));
 
 // Import after mocking
 const { aggregate } = await import('../src/lib.js');
 const { fetchFarcaster } = await import('../src/fetchers/farcaster.js');
 const { fetchLens } = await import('../src/fetchers/lens.js');
 const { fetchNostr } = await import('../src/fetchers/nostr.js');
+const { fetchBluesky } = await import('../src/fetchers/bluesky.js');
 
 const mockFarcaster = vi.mocked(fetchFarcaster);
 const mockLens = vi.mocked(fetchLens);
 const mockNostr = vi.mocked(fetchNostr);
+const mockBluesky = vi.mocked(fetchBluesky);
 
 describe('aggregate', () => {
   beforeEach(() => {
@@ -239,9 +244,10 @@ describe('aggregate', () => {
     mockFarcaster.mockResolvedValue({ posts: [], source: 'farcaster' });
     mockLens.mockResolvedValue({ posts: [], source: 'lens' });
     mockNostr.mockResolvedValue({ posts: [], source: 'nostr' });
+    mockBluesky.mockResolvedValue({ posts: [], source: 'bluesky' });
 
     const result = await aggregate({
-      sources: ['farcaster', 'lens', 'nostr'],
+      sources: ['farcaster', 'lens', 'nostr', 'bluesky'],
       timeframe: '24h',
     });
 

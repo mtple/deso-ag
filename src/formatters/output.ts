@@ -201,6 +201,7 @@ function getSourceEmoji(source: Source): string {
     case 'farcaster': return '🟣';
     case 'lens': return '🌿';
     case 'nostr': return '⚡';
+    case 'bluesky': return '🦋';
   }
 }
 
@@ -209,6 +210,7 @@ function getSourceName(source: Source): string {
     case 'farcaster': return 'Farcaster';
     case 'lens': return 'Lens';
     case 'nostr': return 'Nostr';
+    case 'bluesky': return 'Bluesky';
   }
 }
 

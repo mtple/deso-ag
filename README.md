@@ -2,7 +2,7 @@
 
 **Decentralized Social Aggregator** - A CLI tool and library for aggregating posts from decentralized social protocols.
 
-Search and view content across **Farcaster**, **Lens**, and **Nostr** from your terminal or programmatically from your agent.
+Search and view content across **Farcaster**, **Lens**, **Nostr**, and **Bluesky** from your terminal or programmatically from your agent.
 
 ## Setup
 
@@ -17,17 +17,21 @@ pnpm install
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `NEYNAR_API_KEY` | Yes (for Farcaster) | Neynar API key. Get one free at [neynar.com](https://neynar.com) |
+| `BLUESKY_IDENTIFIER` | For Bluesky search | Your Bluesky handle (e.g. `user.bsky.social`) |
+| `BLUESKY_APP_PASSWORD` | For Bluesky search | App password from [bsky.app/settings/app-passwords](https://bsky.app/settings/app-passwords) |
 
-Lens and Nostr work without any keys.
+Lens, Nostr, and Bluesky trending work without any keys. Bluesky search requires authentication.
 
-Add the key to your shell profile so it persists across sessions:
+Add keys to your shell profile so they persist across sessions:
 
 ```bash
 # Add to ~/.zshrc or ~/.bashrc
 export NEYNAR_API_KEY=your-key-here
+export BLUESKY_IDENTIFIER=your-handle.bsky.social
+export BLUESKY_APP_PASSWORD=your-app-password
 ```
 
-Without the key, Farcaster is skipped and other sources still work normally.
+Without credentials, the respective source is skipped and other sources still work normally.
 
 ## Commands
 
@@ -83,7 +87,7 @@ All commands accept the following options (except where noted):
 
 | Option | Description | Values | Default |
 |--------|-------------|--------|---------|
-| `-s, --sources` | Networks to query | `farcaster`, `lens`, `nostr` (comma-separated) | `farcaster,lens,nostr` (all) |
+| `-s, --sources` | Networks to query | `farcaster`, `lens`, `nostr`, `bluesky` (comma-separated) | `farcaster,lens,nostr,bluesky` (all) |
 | `-t, --timeframe` | Time range for posts | `24h`, `48h`, `week` | `24h` |
 | `-c, --channel` | Filter by channel | Any channel ID (Farcaster only) | none |
 | `-f, --format` | Output format | `json`, `markdown`, `summary`, `compact` | `markdown` (search), `summary` (trending) |
@@ -156,7 +160,7 @@ For agents that run in Node.js, import `aggregate()` directly instead of shellin
 import { aggregate } from 'deso-ag';
 
 const result = await aggregate({
-  sources: ['farcaster', 'lens', 'nostr'],
+  sources: ['farcaster', 'lens', 'nostr', 'bluesky'],
   timeframe: '24h',
   query: 'AI agents',
   limit: 20,
@@ -188,7 +192,7 @@ for (const st of result.bySource) {
 Individual fetchers and utilities are also exported:
 
 ```typescript
-import { fetchFarcaster, fetchLens, fetchNostr, computeEngagementScore, matchesQuery, extractTerms } from 'deso-ag';
+import { fetchFarcaster, fetchLens, fetchNostr, fetchBluesky, computeEngagementScore, matchesQuery, extractTerms } from 'deso-ag';
 ```
 
 ## Examples
@@ -212,6 +216,12 @@ pnpm dev search --channel dev -s farcaster
 # Export trending Nostr posts as JSON
 pnpm dev trending -s nostr -f json > nostr-trending.json
 
+# Search Bluesky for discussions
+pnpm dev search "ethereum" -s bluesky -l 5
+
+# Trending on Bluesky
+pnpm dev trending -s bluesky -f summary
+
 # Sort search results by recency
 pnpm dev search "ethereum" -o recent -f json -l 5
 
@@ -229,6 +239,7 @@ pnpm dev terms -f json -s farcaster,nostr -l 10
 | **Farcaster** | [Neynar API](https://neynar.com) - trending feed and full-text search | `NEYNAR_API_KEY` required |
 | **Lens** | [Lens V3 GraphQL API](https://api.lens.xyz) - server-side search, recent posts | None |
 | **Nostr** | [nostr.wine trending API](https://docs.nostr.wine/api/trending) + public relays (relay.damus.io, nos.lol, relay.snort.social) | None |
+| **Bluesky** | [AT Protocol API](https://docs.bsky.app) - public "What's Hot" feed for trending, authenticated search via `app.bsky.feed.searchPosts` | None (trending), `BLUESKY_IDENTIFIER` + `BLUESKY_APP_PASSWORD` (search) |
 
 All networks return engagement stats (likes, reposts, replies) and support timeframe filtering.
 

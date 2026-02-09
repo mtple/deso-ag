@@ -1,6 +1,7 @@
 import { fetchFarcaster } from './fetchers/farcaster.js';
 import { fetchLens } from './fetchers/lens.js';
 import { fetchNostr } from './fetchers/nostr.js';
+import { fetchBluesky } from './fetchers/bluesky.js';
 import { computeEngagementScore } from './formatters/output.js';
 import { deduplicatePosts, sortPosts } from './pipeline.js';
 import { extractTermsBySource } from './terms.js';
@@ -13,6 +14,7 @@ export { extractTerms, extractTermsBySource, tokenize } from './terms.js';
 export { fetchFarcaster } from './fetchers/farcaster.js';
 export { fetchLens } from './fetchers/lens.js';
 export { fetchNostr } from './fetchers/nostr.js';
+export { fetchBluesky } from './fetchers/bluesky.js';
 export type { Source, Timeframe, OutputFormat, SortOrder, Post, SearchOptions, FetchResult, AggregateResult, Term, SourceTerms, TermsResult } from './types.js';
 
 /**
@@ -34,6 +36,9 @@ export async function aggregate(options: SearchOptions): Promise<AggregateResult
         break;
       case 'nostr':
         fetchers.push(fetchNostr(options));
+        break;
+      case 'bluesky':
+        fetchers.push(fetchBluesky(options));
         break;
     }
   }

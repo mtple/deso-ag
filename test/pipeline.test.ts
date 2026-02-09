@@ -248,11 +248,11 @@ describe('buildMeta', () => {
 
 describe('parseSources', () => {
   it('parses comma-separated sources', () => {
-    expect(parseSources('farcaster,lens,nostr')).toEqual(['farcaster', 'lens', 'nostr']);
+    expect(parseSources('farcaster,lens,nostr,bluesky')).toEqual(['farcaster', 'lens', 'nostr', 'bluesky']);
   });
 
   it('handles spaces', () => {
-    expect(parseSources('farcaster, lens, nostr')).toEqual(['farcaster', 'lens', 'nostr']);
+    expect(parseSources('farcaster, lens, nostr, bluesky')).toEqual(['farcaster', 'lens', 'nostr', 'bluesky']);
   });
 
   it('filters invalid sources', () => {
@@ -260,7 +260,7 @@ describe('parseSources', () => {
   });
 
   it('handles single source', () => {
-    expect(parseSources('nostr')).toEqual(['nostr']);
+    expect(parseSources('bluesky')).toEqual(['bluesky']);
   });
 
   it('is case-insensitive', () => {

@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { fetchFarcaster } from './fetchers/farcaster.js';
 import { fetchLens } from './fetchers/lens.js';
 import { fetchNostr } from './fetchers/nostr.js';
+import { fetchBluesky } from './fetchers/bluesky.js';
 import { formatOutput, formatTermsSummary } from './formatters/output.js';
 import {
   mergeResults,
@@ -29,7 +30,7 @@ program
 program
   .command('search [query]')
   .description('Search for posts across decentralized social networks')
-  .option('-s, --sources <sources>', 'Comma-separated list of sources (farcaster,lens,nostr)', 'farcaster,lens,nostr')
+  .option('-s, --sources <sources>', 'Comma-separated list of sources (farcaster,lens,nostr,bluesky)', 'farcaster,lens,nostr,bluesky')
   .option('-t, --timeframe <timeframe>', 'Time range: 24h, 48h, week', '24h')
   .option('-c, --channel <channel>', 'Filter by channel (Farcaster only)')
   .option('-f, --format <format>', 'Output format: json, markdown, summary, compact', 'markdown')
@@ -83,7 +84,7 @@ program
 program
   .command('trending')
   .description('Get trending posts from decentralized social networks')
-  .option('-s, --sources <sources>', 'Comma-separated list of sources (farcaster,lens,nostr)', 'farcaster,lens,nostr')
+  .option('-s, --sources <sources>', 'Comma-separated list of sources (farcaster,lens,nostr,bluesky)', 'farcaster,lens,nostr,bluesky')
   .option('-t, --timeframe <timeframe>', 'Time range: 24h, 48h, week', '24h')
   .option('-f, --format <format>', 'Output format: json, markdown, summary, compact', 'summary')
   .option('-l, --limit <limit>', 'Maximum posts per source', '25')
@@ -163,7 +164,7 @@ program
 program
   .command('terms')
   .description('Extract top discussion terms from posts')
-  .option('-s, --sources <sources>', 'Comma-separated list of sources (farcaster,lens,nostr)', 'farcaster,lens,nostr')
+  .option('-s, --sources <sources>', 'Comma-separated list of sources (farcaster,lens,nostr,bluesky)', 'farcaster,lens,nostr,bluesky')
   .option('-t, --timeframe <timeframe>', 'Time range: 24h, 48h, week', '24h')
   .option('-n, --top <count>', 'Number of top terms per source', '3')
   .option('-f, --format <format>', 'Output format: json, summary, compact', 'summary')
@@ -226,6 +227,9 @@ async function fetchFromSources(options: SearchOptions): Promise<FetchResult[]> 
         break;
       case 'nostr':
         fetchers.push(fetchNostr(options));
+        break;
+      case 'bluesky':
+        fetchers.push(fetchBluesky(options));
         break;
     }
   }

@@ -364,6 +364,7 @@ describe('formatTermsSummary', () => {
         { source: 'farcaster', postCount: 1, terms: [{ token: 'test', score: 1, postCount: 1 }] },
         { source: 'lens', postCount: 1, terms: [{ token: 'test', score: 1, postCount: 1 }] },
         { source: 'nostr', postCount: 1, terms: [{ token: 'test', score: 1, postCount: 1 }] },
+        { source: 'bluesky', postCount: 1, terms: [{ token: 'test', score: 1, postCount: 1 }] },
       ],
       overall: [],
       timeframe: '24h',
@@ -374,5 +375,6 @@ describe('formatTermsSummary', () => {
     expect(result).toContain('🟣 Farcaster');
     expect(result).toContain('🌿 Lens');
     expect(result).toContain('⚡ Nostr');
+    expect(result).toContain('🦋 Bluesky');
   });
 });

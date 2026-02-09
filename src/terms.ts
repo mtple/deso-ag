@@ -177,7 +177,7 @@ export function extractTermsBySource(
   }
 
   // Sort sources in a consistent order
-  const sourceOrder: Source[] = ['farcaster', 'lens', 'nostr'];
+  const sourceOrder: Source[] = ['farcaster', 'lens', 'nostr', 'bluesky'];
   sourceTerms.sort((a, b) => sourceOrder.indexOf(a.source) - sourceOrder.indexOf(b.source));
 
   return {

@@ -124,7 +124,7 @@ export function buildMeta(results: FetchResult[], options: SearchOptions): Aggre
 }
 
 export function parseSources(input: string): Source[] {
-  const valid: Source[] = ['farcaster', 'lens', 'nostr'];
+  const valid: Source[] = ['farcaster', 'lens', 'nostr', 'bluesky'];
   const sources = input.split(',').map(s => s.trim().toLowerCase());
 
   return sources.filter((s): s is Source => valid.includes(s as Source));

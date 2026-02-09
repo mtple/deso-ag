@@ -189,7 +189,7 @@ describe('extractTermsBySource', () => {
     expect(result.analyzedAt).toBeDefined();
   });
 
-  it('sorts sources in consistent order: farcaster, lens, nostr', () => {
+  it('sorts sources in consistent order: farcaster, lens, nostr, bluesky', () => {
     const posts = [
       makePost({ id: '1', source: 'nostr', content: 'nostr protocol is evolving rapidly today' }),
       makePost({ id: '2', source: 'nostr', content: 'nostr events are being relayed everywhere' }),
@@ -197,10 +197,13 @@ describe('extractTermsBySource', () => {
       makePost({ id: '4', source: 'farcaster', content: 'farcaster frames enable new interactions' }),
       makePost({ id: '5', source: 'lens', content: 'lens protocol governance is improving fast' }),
       makePost({ id: '6', source: 'lens', content: 'lens protocol upgrades are coming soon' }),
+      makePost({ id: '7', source: 'bluesky', content: 'bluesky atproto federation is growing fast' }),
+      makePost({ id: '8', source: 'bluesky', content: 'bluesky atproto custom feeds are great' }),
     ];
     const result = extractTermsBySource(posts, 3);
     expect(result.bySource[0].source).toBe('farcaster');
     expect(result.bySource[1].source).toBe('lens');
     expect(result.bySource[2].source).toBe('nostr');
+    expect(result.bySource[3].source).toBe('bluesky');
   });
 });
