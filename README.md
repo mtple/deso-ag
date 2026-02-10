@@ -52,16 +52,16 @@ Without a key, the respective source/feature is skipped and everything else stil
 Search for posts across networks.
 
 ```bash
-pnpm dev search "ethereum"
-pnpm dev search "AI" --sources nostr
-pnpm dev search --channel dev --sources farcaster
+deso-ag search "ethereum"
+deso-ag search "AI" --sources nostr
+deso-ag search --channel dev --sources farcaster
 ```
 
 Multi-word queries use AND semantics (all terms must match):
 
 ```bash
-pnpm dev search "AI crypto"       # posts must contain both "AI" and "crypto"
-pnpm dev search "ethereum layer2"
+deso-ag search "AI crypto"       # posts must contain both "AI" and "crypto"
+deso-ag search "ethereum layer2"
 ```
 
 ### `trending`
@@ -69,9 +69,9 @@ pnpm dev search "ethereum layer2"
 Get trending posts from all networks.
 
 ```bash
-pnpm dev trending
-pnpm dev trending --sources farcaster,lens
-pnpm dev trending --format json --limit 50
+deso-ag trending
+deso-ag trending --sources farcaster,lens
+deso-ag trending --format json --limit 50
 ```
 
 ### `terms`
@@ -79,9 +79,9 @@ pnpm dev trending --format json --limit 50
 Extract top discussion terms from posts via engagement-weighted frequency analysis.
 
 ```bash
-pnpm dev terms                              # top 3 terms per platform, last 24h
-pnpm dev terms -n 5 -s farcaster -t week    # top 5, Farcaster only, last week
-pnpm dev terms -f json                      # machine-readable output
+deso-ag terms                              # top 3 terms per platform, last 24h
+deso-ag terms -n 5 -s farcaster -t week    # top 5, Farcaster only, last week
+deso-ag terms -f json                      # machine-readable output
 ```
 
 ### `channels`
@@ -89,8 +89,8 @@ pnpm dev terms -f json                      # machine-readable output
 Browse popular Farcaster channels.
 
 ```bash
-pnpm dev channels
-pnpm dev channels --limit 50
+deso-ag channels
+deso-ag channels --limit 50
 ```
 
 ## Options
@@ -129,8 +129,8 @@ deso-ag is designed for consumption by AI agents doing research across decentral
 The `compact` format returns a single JSON object with a metadata envelope, pre-computed engagement scores, full untruncated content, and source health info:
 
 ```bash
-pnpm dev trending -f compact -l 10
-pnpm dev search "AI agents" -f compact -l 10
+deso-ag trending -f compact -l 10
+deso-ag search "AI agents" -f compact -l 10
 ```
 
 Output shape:
@@ -211,37 +211,37 @@ import { fetchFarcaster, fetchLens, fetchNostr, fetchBluesky, computeEngagementS
 
 ```bash
 # Get a quick summary of trending content
-pnpm dev trending -f summary -l 20
+deso-ag trending -f summary -l 20
 
 # Agent-optimized compact output sorted by engagement
-pnpm dev trending -f compact -o engagement -l 10
+deso-ag trending -f compact -o engagement -l 10
 
 # Search for AI discussions on Lens only
-pnpm dev search "AI" -s lens -f json
+deso-ag search "AI" -s lens -f json
 
 # Multi-word search with compact output
-pnpm dev search "AI crypto" -f compact -l 10
+deso-ag search "AI crypto" -f compact -l 10
 
 # Browse the /dev channel on Farcaster
-pnpm dev search --channel dev -s farcaster
+deso-ag search --channel dev -s farcaster
 
 # Export trending Nostr posts as JSON
-pnpm dev trending -s nostr -f json > nostr-trending.json
+deso-ag trending -s nostr -f json > nostr-trending.json
 
 # Search Bluesky for discussions
-pnpm dev search "ethereum" -s bluesky -l 5
+deso-ag search "ethereum" -s bluesky -l 5
 
 # Trending on Bluesky
-pnpm dev trending -s bluesky -f summary
+deso-ag trending -s bluesky -f summary
 
 # Sort search results by recency
-pnpm dev search "ethereum" -o recent -f json -l 5
+deso-ag search "ethereum" -o recent -f json -l 5
 
 # Top 5 terms across all networks this week
-pnpm dev terms -n 5 -t week
+deso-ag terms -n 5 -t week
 
 # Terms from Farcaster and Nostr as JSON
-pnpm dev terms -f json -s farcaster,nostr -l 10
+deso-ag terms -f json -s farcaster,nostr -l 10
 ```
 
 ## Supported Networks

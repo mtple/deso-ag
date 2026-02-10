@@ -25,7 +25,7 @@ const program = new Command();
 program
   .name('deso-ag')
   .description('CLI tool for aggregating posts from decentralized social protocols')
-  .version('1.0.2');
+  .version('1.0.3');
 
 program
   .command('search [query]')
