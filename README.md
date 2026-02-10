@@ -19,7 +19,7 @@ npm install -g deso-ag
 ### From Source
 
 ```bash
-git clone https://github.com/sphairetra/deso-ag
+git clone https://github.com/mtple/deso-ag
 cd deso-ag
 pnpm install
 ```
