@@ -229,6 +229,14 @@ async function searchWithFallback(options: SearchOptions, cutoff: Date): Promise
     // ignore
   }
 
+  // Try nostr.wine search API
+  try {
+    const events = await searchNostrWine(options, cutoff);
+    if (events.length > 0) return events;
+  } catch {
+    // ignore
+  }
+
   // Fall back to relay-based search
   return queryRelays(options, cutoff);
 }
@@ -262,6 +270,44 @@ async function searchNostrBand(options: SearchOptions): Promise<NostrEvent[]> {
     };
 
     return (data.notes || []).map(n => n.event);
+  } catch (error) {
+    clearTimeout(timeout);
+    throw error;
+  }
+}
+
+async function searchNostrWine(options: SearchOptions, cutoff: Date): Promise<NostrEvent[]> {
+  const limit = options.limit || 50;
+  const query = options.query || '';
+  const since = Math.floor(cutoff.getTime() / 1000);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const params = new URLSearchParams({
+      query,
+      kind: '1',
+      limit: String(Math.min(limit, 100)),
+      since: String(since),
+      sort: 'time',
+    });
+    const response = await fetch(`https://api.nostr.wine/search?${params}`, {
+      signal: controller.signal,
+      headers: { 'Accept': 'application/json' },
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      throw new Error(`nostr.wine search API: ${response.status}`);
+    }
+
+    const data = await response.json() as {
+      data: NostrEvent[];
+    };
+
+    return data.data || [];
   } catch (error) {
     clearTimeout(timeout);
     throw error;
