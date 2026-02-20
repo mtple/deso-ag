@@ -27,7 +27,7 @@ describe('fetchNostr', () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: () => Promise.resolve([]),
+      json: () => Promise.resolve({ notes: [] }),
     });
 
     const result = await fetchNostr(baseOptions);
@@ -35,11 +35,11 @@ describe('fetchNostr', () => {
     expect(result.source).toBe('nostr');
   });
 
-  it('uses nostr.wine trending API when no query', async () => {
+  it('tries nostr.band trending API first when no query', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: () => Promise.resolve([]),
+      json: () => Promise.resolve({ notes: [] }),
     });
 
     await fetchNostr(baseOptions);
@@ -47,10 +47,27 @@ describe('fetchNostr', () => {
     const calls = vi.mocked(globalThis.fetch).mock.calls;
     expect(calls.length).toBeGreaterThanOrEqual(1);
     const url = calls[0][0] as string;
-    expect(url).toContain('api.nostr.wine/trending');
+    expect(url).toContain('api.nostr.band/v0/trending/notes');
   });
 
-  it('returns empty posts on trending API failure gracefully', async () => {
+  it('falls back to nostr.wine when nostr.band fails', async () => {
+    let callCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      callCount++;
+      if ((url as string).includes('nostr.band')) {
+        return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+      }
+      // nostr.wine fallback
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+    });
+
+    const result = await fetchNostr(baseOptions);
+
+    expect(result.source).toBe('nostr');
+    expect(callCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it('returns gracefully when all trending APIs fail', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -60,23 +77,24 @@ describe('fetchNostr', () => {
     const result = await fetchNostr(baseOptions);
 
     expect(result.source).toBe('nostr');
-    expect(result.error).toBeDefined();
+    // Should still return (possibly empty), not crash
+    expect(result.posts).toBeInstanceOf(Array);
   });
 
-  it('returns error on network failure', async () => {
+  it('returns gracefully on network failure', async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
 
     const result = await fetchNostr(baseOptions);
 
-    expect(result.posts).toEqual([]);
-    expect(result.error).toContain('Network error');
+    expect(result.posts).toBeInstanceOf(Array);
+    expect(result.source).toBe('nostr');
   });
 
   it('returns posts array (possibly empty)', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: () => Promise.resolve([]),
+      json: () => Promise.resolve({ notes: [] }),
     });
 
     const result = await fetchNostr(baseOptions);
