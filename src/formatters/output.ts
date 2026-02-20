@@ -185,6 +185,7 @@ function formatSummary(posts: Post[]): string {
   }
 
   const topTags = [...tagCounts.entries()]
+    .filter(([, count]) => count > 1)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10);
 

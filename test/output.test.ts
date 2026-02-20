@@ -154,14 +154,23 @@ describe('formatOutput', () => {
       expect(result).toContain('Total: 2 posts');
     });
 
-    it('shows trending tags', () => {
+    it('shows trending tags only when count > 1', () => {
       const posts = [
         makePost({ id: '1', tags: ['eth', 'defi'] }),
         makePost({ id: '2', tags: ['eth'] }),
       ];
       const result = formatOutput(posts, 'summary');
       expect(result).toContain('#eth (2)');
-      expect(result).toContain('#defi (1)');
+      expect(result).not.toContain('#defi');
+    });
+
+    it('hides trending tags section when no tag appears more than once', () => {
+      const posts = [
+        makePost({ id: '1', tags: ['eth'] }),
+        makePost({ id: '2', tags: ['defi'] }),
+      ];
+      const result = formatOutput(posts, 'summary');
+      expect(result).not.toContain('Trending Tags');
     });
   });
 
