@@ -11,6 +11,9 @@ importers:
       commander:
         specifier: ^12.1.0
         version: 12.1.0
+      dotenv:
+        specifier: ^17.3.1
+        version: 17.3.1
       nostr-tools:
         specifier: ^2.7.0
         version: 2.23.0(typescript@5.9.3)
@@ -409,6 +412,10 @@ packages:
     peerDependenciesMeta:
       supports-color:
         optional: true
+
+  dotenv@17.3.1:
+    resolution: {integrity: sha512-IO8C/dzEb6O3F9/twg6ZLXz164a2fhTnEWb95H23Dm4OuN+92NmEAlTrupP9VW6Jm3sO26tQlqyvyi4CsnY9GA==}
+    engines: {node: '>=12'}
 
   es-module-lexer@1.7.0:
     resolution: {integrity: sha512-jEQoCwk8hyb2AZziIOLhDqpm5+2ww5uIE6lkO/6jcOCusfk6LhMHpXXfBLXTZ7Ydyt0j4VoUQv6uGNYbdW+kBA==}
@@ -915,6 +922,8 @@ snapshots:
   debug@2.6.9:
     dependencies:
       ms: 2.0.0
+
+  dotenv@17.3.1: {}
 
   es-module-lexer@1.7.0: {}
 

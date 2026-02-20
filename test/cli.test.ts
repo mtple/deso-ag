@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,6 +10,7 @@ const exec = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, '..');
 const PKG_VERSION = JSON.parse(readFileSync(resolve(PROJECT_ROOT, 'package.json'), 'utf-8')).version;
+const HAS_ENV_FILE = existsSync(resolve(PROJECT_ROOT, '.env'));
 
 const CLI = ['npx', ['tsx', 'src/index.ts']] as const;
 
@@ -20,7 +21,20 @@ function run(...args: string[]): Promise<{ stdout: string; stderr: string }> {
   });
 }
 
-// Use lens for CLI integration tests since Farcaster requires NEYNAR_API_KEY
+/** Run CLI with a custom environment (strips keys for negative tests) */
+function runWithEnv(env: Record<string, string | undefined>, ...args: string[]): Promise<{ stdout: string; stderr: string }> {
+  const filteredEnv: Record<string, string> = {};
+  for (const [k, v] of Object.entries({ ...process.env, ...env })) {
+    if (v !== undefined) filteredEnv[k] = v;
+  }
+  return exec(CLI[0], [...CLI[1], ...args], {
+    cwd: PROJECT_ROOT,
+    timeout: 60_000,
+    env: filteredEnv,
+  });
+}
+
+// Use lens for most CLI integration tests (no API key required)
 const TEST_SOURCE = 'lens';
 
 describe('CLI integration', () => {
@@ -129,11 +143,76 @@ describe('CLI integration', () => {
     }, 30_000);
   });
 
-  describe('farcaster without key', () => {
-    it('shows error when NEYNAR_API_KEY is not set', async () => {
-      const { stderr } = await run('trending', '-f', 'json', '-l', '3', '-s', 'farcaster');
+  describe('env loading', () => {
+    it('shows error when NEYNAR_API_KEY is empty', async () => {
+      // Set to empty string so dotenv won't override from .env (dotenv skips existing vars)
+      const { stderr } = await runWithEnv(
+        { NEYNAR_API_KEY: '' },
+        'trending', '-f', 'json', '-l', '3', '-s', 'farcaster',
+      );
       expect(stderr).toContain('NEYNAR_API_KEY');
     }, 30_000);
+
+    it.runIf(HAS_ENV_FILE)('loads .env file and picks up NEYNAR_API_KEY', async () => {
+      const { stderr } = await run('trending', '-f', 'json', '-l', '1', '-s', 'farcaster');
+      // If dotenv loaded correctly, we should NOT see the missing key error
+      expect(stderr).not.toContain('requires NEYNAR_API_KEY');
+    }, 30_000);
+
+    it.runIf(HAS_ENV_FILE)('loads .env file and picks up BLUESKY credentials', async () => {
+      const { stderr } = await run('search', 'test', '-f', 'json', '-l', '1', '-s', 'bluesky');
+      expect(stderr).not.toContain('requires BLUESKY_IDENTIFIER');
+    }, 60_000);
+  });
+
+  describe('per-source connectivity', () => {
+    it('farcaster completes and returns valid json', async () => {
+      const { stdout, stderr } = await run('trending', '-f', 'json', '-l', '3', '-s', 'farcaster');
+      const parsed = JSON.parse(stdout);
+      expect(parsed).toBeInstanceOf(Array);
+      if (!HAS_ENV_FILE) {
+        // Without .env, should warn about missing key (not crash)
+        expect(stderr).toContain('NEYNAR_API_KEY');
+      } else {
+        expect(stderr).not.toContain('requires NEYNAR_API_KEY');
+      }
+    }, 30_000);
+
+    it('lens completes and returns valid json', async () => {
+      const { stdout, stderr } = await run('trending', '-f', 'json', '-l', '3', '-s', 'lens');
+      expect(stderr).not.toContain('⚠️  lens:');
+      const parsed = JSON.parse(stdout);
+      expect(parsed).toBeInstanceOf(Array);
+    }, 30_000);
+
+    it('nostr completes and returns valid json', async () => {
+      const { stdout, stderr } = await run('trending', '-f', 'json', '-l', '3', '-s', 'nostr');
+      expect(stderr).not.toContain('⚠️  nostr:');
+      const parsed = JSON.parse(stdout);
+      expect(parsed).toBeInstanceOf(Array);
+    }, 60_000);
+
+    it('bluesky completes and returns valid json', async () => {
+      const { stdout, stderr } = await run('trending', '-f', 'json', '-l', '3', '-s', 'bluesky');
+      const parsed = JSON.parse(stdout);
+      expect(parsed).toBeInstanceOf(Array);
+      if (!HAS_ENV_FILE) {
+        // Without .env, should warn about missing credentials (not crash)
+        expect(stderr).toContain('BLUESKY_IDENTIFIER');
+      } else {
+        expect(stderr).not.toContain('requires BLUESKY_IDENTIFIER');
+      }
+    }, 30_000);
+
+    it('all sources together completes and returns valid output', async () => {
+      const { stdout, stderr } = await run('trending', '-f', 'compact', '-l', '3', '-s', 'farcaster,lens,nostr,bluesky');
+      const parsed = JSON.parse(stdout);
+      expect(parsed.meta.sources).toHaveLength(4);
+      if (HAS_ENV_FILE) {
+        expect(stderr).not.toContain('requires NEYNAR_API_KEY');
+        expect(stderr).not.toContain('requires BLUESKY_IDENTIFIER');
+      }
+    }, 90_000);
   });
 
   describe('option validation', () => {

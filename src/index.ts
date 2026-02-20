@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import 'dotenv/config';
 import { Command } from 'commander';
 import { fetchFarcaster } from './fetchers/farcaster.js';
 import { fetchLens } from './fetchers/lens.js';
@@ -25,7 +26,7 @@ const program = new Command();
 program
   .name('deso-ag')
   .description('CLI tool for aggregating posts from decentralized social protocols')
-  .version('1.0.5');
+  .version('1.0.6');
 
 program
   .command('search [query]')
@@ -237,4 +238,4 @@ async function fetchFromSources(options: SearchOptions): Promise<FetchResult[]> 
   return Promise.all(fetchers);
 }
 
-program.parse();
+program.parseAsync().then(() => process.exit(0));

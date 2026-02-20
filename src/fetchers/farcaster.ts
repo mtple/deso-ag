@@ -147,6 +147,10 @@ async function fetchNeynarTrending(
       clearTimeout(timeout);
 
       if (!response.ok) {
+        // 404 with channel means no trending casts in that channel — not an error
+        if (response.status === 404 && channel) {
+          break;
+        }
         throw new Error(`Neynar trending API: ${response.status}`);
       }
 
