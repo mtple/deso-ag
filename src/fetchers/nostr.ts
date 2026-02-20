@@ -10,6 +10,9 @@ const RELAYS = [
   'wss://relay.snort.social',
 ];
 
+// nostr.wine trending API (free, no auth)
+const NOSTR_WINE_API = 'https://api.nostr.wine';
+
 interface NostrEvent {
   id: string;
   pubkey: string;
@@ -42,13 +45,14 @@ export async function fetchNostr(options: SearchOptions): Promise<FetchResult> {
     let engagementMap = new Map<string, TrendingNote>();
 
     if (options.query) {
-      // For search queries, try nostr.band API first, fall back to relay-based search
-      events = await searchWithFallback(options, cutoff);
+      // For search queries, use relay-based approach
+      events = await queryRelays(options, cutoff);
     } else {
-      // For trending, try multiple APIs with fallback
-      const result = await fetchTrendingWithFallback(options);
-      events = result.events;
-      engagementMap = result.engagementMap;
+      // For trending, use nostr.wine API + relay fetch for full content
+      const trending = await fetchTrendingNotes(options);
+      engagementMap = new Map(trending.map(t => [t.event_id, t]));
+      const eventIds = trending.map(t => t.event_id);
+      events = await fetchEventsByIds(eventIds);
     }
 
     const profileCache = new Map<string, NostrProfile>();
@@ -104,87 +108,7 @@ export async function fetchNostr(options: SearchOptions): Promise<FetchResult> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Trending: try nostr.band → nostr.wine + relay fetch
-// ---------------------------------------------------------------------------
-
-interface TrendingResult {
-  events: NostrEvent[];
-  engagementMap: Map<string, TrendingNote>;
-}
-
-async function fetchTrendingWithFallback(options: SearchOptions): Promise<TrendingResult> {
-  // Try nostr.band first (returns full events inline)
-  try {
-    return await fetchTrendingFromNostrBand(options);
-  } catch {
-    // ignore
-  }
-
-  // Fall back to nostr.wine (returns IDs only, needs relay fetch)
-  try {
-    return await fetchTrendingFromNostrWine(options);
-  } catch {
-    // ignore
-  }
-
-  // Last resort: fetch recent notes directly from relays (no engagement data)
-  const cutoff = getTimeframeCutoff(options.timeframe);
-  const events = await queryRelays(options, cutoff);
-  return { events, engagementMap: new Map() };
-}
-
-async function fetchTrendingFromNostrBand(options: SearchOptions): Promise<TrendingResult> {
-  const limit = options.limit || 25;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-
-  try {
-    const response = await fetch('https://api.nostr.band/v0/trending/notes', {
-      signal: controller.signal,
-      headers: { 'Accept': 'application/json' },
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      throw new Error(`nostr.band trending API: ${response.status}`);
-    }
-
-    const data = await response.json() as {
-      notes: Array<{
-        event: NostrEvent;
-        stats?: { replies?: number; reposts?: number; likes?: number; zaps?: number; zap_amount?: number };
-      }>;
-    };
-
-    const notes = data.notes || [];
-    const events: NostrEvent[] = [];
-    const engagementMap = new Map<string, TrendingNote>();
-
-    for (const note of notes.slice(0, limit)) {
-      events.push(note.event);
-      if (note.stats) {
-        engagementMap.set(note.event.id, {
-          event_id: note.event.id,
-          reactions: note.stats.likes || 0,
-          replies: note.stats.replies || 0,
-          reposts: note.stats.reposts || 0,
-          zap_amount: note.stats.zap_amount || 0,
-          zap_count: note.stats.zaps || 0,
-        });
-      }
-    }
-
-    return { events, engagementMap };
-  } catch (error) {
-    clearTimeout(timeout);
-    throw error;
-  }
-}
-
-async function fetchTrendingFromNostrWine(options: SearchOptions): Promise<TrendingResult> {
+async function fetchTrendingNotes(options: SearchOptions): Promise<TrendingNote[]> {
   const limit = options.limit || 25;
   const hours = options.timeframe === 'week' ? 48 : options.timeframe === '48h' ? 48 : 24;
 
@@ -192,7 +116,7 @@ async function fetchTrendingFromNostrWine(options: SearchOptions): Promise<Trend
   const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
-    const url = `https://api.nostr.wine/trending?order=reactions&hours=${hours}&limit=${Math.min(limit, 100)}`;
+    const url = `${NOSTR_WINE_API}/trending?order=reactions&hours=${hours}&limit=${Math.min(limit, 100)}`;
     const response = await fetch(url, {
       signal: controller.signal,
       headers: { 'Accept': 'application/json' },
@@ -204,119 +128,12 @@ async function fetchTrendingFromNostrWine(options: SearchOptions): Promise<Trend
       throw new Error(`nostr.wine API: ${response.status}`);
     }
 
-    const trending = await response.json() as TrendingNote[];
-    const engagementMap = new Map(trending.map(t => [t.event_id, t]));
-    const eventIds = trending.map(t => t.event_id);
-    const events = await fetchEventsByIds(eventIds);
-
-    return { events, engagementMap };
+    return await response.json() as TrendingNote[];
   } catch (error) {
     clearTimeout(timeout);
     throw error;
   }
 }
-
-// ---------------------------------------------------------------------------
-// Search: try nostr.band API → relay-based search
-// ---------------------------------------------------------------------------
-
-async function searchWithFallback(options: SearchOptions, cutoff: Date): Promise<NostrEvent[]> {
-  // Try nostr.band search API first
-  try {
-    const events = await searchNostrBand(options);
-    if (events.length > 0) return events;
-  } catch {
-    // ignore
-  }
-
-  // Try nostr.wine search API
-  try {
-    const events = await searchNostrWine(options, cutoff);
-    if (events.length > 0) return events;
-  } catch {
-    // ignore
-  }
-
-  // Fall back to relay-based search
-  return queryRelays(options, cutoff);
-}
-
-async function searchNostrBand(options: SearchOptions): Promise<NostrEvent[]> {
-  const limit = options.limit || 50;
-  const query = options.query || '';
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-
-  try {
-    const params = new URLSearchParams({
-      q: query,
-      type: 'posts',
-      limit: String(Math.min(limit, 100)),
-    });
-    const response = await fetch(`https://api.nostr.band/v0/search?${params}`, {
-      signal: controller.signal,
-      headers: { 'Accept': 'application/json' },
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      throw new Error(`nostr.band search API: ${response.status}`);
-    }
-
-    const data = await response.json() as {
-      notes: Array<{ event: NostrEvent }>;
-    };
-
-    return (data.notes || []).map(n => n.event);
-  } catch (error) {
-    clearTimeout(timeout);
-    throw error;
-  }
-}
-
-async function searchNostrWine(options: SearchOptions, cutoff: Date): Promise<NostrEvent[]> {
-  const limit = options.limit || 50;
-  const query = options.query || '';
-  const since = Math.floor(cutoff.getTime() / 1000);
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-
-  try {
-    const params = new URLSearchParams({
-      query,
-      kind: '1',
-      limit: String(Math.min(limit, 100)),
-      since: String(since),
-      sort: 'time',
-    });
-    const response = await fetch(`https://api.nostr.wine/search?${params}`, {
-      signal: controller.signal,
-      headers: { 'Accept': 'application/json' },
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      throw new Error(`nostr.wine search API: ${response.status}`);
-    }
-
-    const data = await response.json() as {
-      data: NostrEvent[];
-    };
-
-    return data.data || [];
-  } catch (error) {
-    clearTimeout(timeout);
-    throw error;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Relay-based fetching (WebSocket)
-// ---------------------------------------------------------------------------
 
 async function fetchEventsByIds(eventIds: string[]): Promise<NostrEvent[]> {
   if (eventIds.length === 0) return [];
@@ -349,7 +166,7 @@ async function queryRelayByIds(relay: string, ids: string[]): Promise<NostrEvent
     let ws: WebSocket | null = null;
 
     const timeout = setTimeout(() => {
-      safeClose(ws);
+      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
       resolve(events);
     }, 8000);
 
@@ -372,7 +189,7 @@ async function queryRelayByIds(relay: string, ids: string[]): Promise<NostrEvent
             events.push(data[2] as NostrEvent);
           } else if (data[0] === 'EOSE') {
             clearTimeout(timeout);
-            safeClose(ws);
+            if (ws?.readyState === WebSocket.OPEN) ws.close();
             resolve(events);
           }
         } catch {
@@ -430,7 +247,7 @@ async function queryRelay(relay: string, since: number, limit: number, query?: s
     let ws: WebSocket | null = null;
 
     const timeout = setTimeout(() => {
-      safeClose(ws);
+      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
       resolve(events);
     }, 5000);
 
@@ -461,7 +278,7 @@ async function queryRelay(relay: string, since: number, limit: number, query?: s
             events.push(data[2] as NostrEvent);
           } else if (data[0] === 'EOSE') {
             clearTimeout(timeout);
-            safeClose(ws);
+            if (ws?.readyState === WebSocket.OPEN) ws.close();
             resolve(events);
           }
         } catch {
@@ -485,10 +302,6 @@ async function queryRelay(relay: string, since: number, limit: number, query?: s
   });
 }
 
-// ---------------------------------------------------------------------------
-// Profile fetching
-// ---------------------------------------------------------------------------
-
 async function fetchProfiles(pubkeys: string[], cache: Map<string, NostrProfile>): Promise<void> {
   if (pubkeys.length === 0) return;
 
@@ -497,7 +310,7 @@ async function fetchProfiles(pubkeys: string[], cache: Map<string, NostrProfile>
   return new Promise((resolve) => {
     let ws: WebSocket | null = null;
     const timeout = setTimeout(() => {
-      safeClose(ws);
+      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
       resolve();
     }, 3000);
 
@@ -522,7 +335,7 @@ async function fetchProfiles(pubkeys: string[], cache: Map<string, NostrProfile>
             cache.set(event.pubkey, profile);
           } else if (data[0] === 'EOSE') {
             clearTimeout(timeout);
-            safeClose(ws);
+            if (ws?.readyState === WebSocket.OPEN) ws.close();
             resolve();
           }
         } catch {
@@ -546,27 +359,10 @@ async function fetchProfiles(pubkeys: string[], cache: Map<string, NostrProfile>
   });
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function extractHashtags(tags: string[][]): string[] {
   return tags
     .filter(tag => tag[0] === 't')
     .map(tag => tag[1]);
-}
-
-/**
- * Safely close a WebSocket, guarding against the websocket-polyfill crash
- * where close() throws if the connection was never established.
- */
-function safeClose(ws: WebSocket | null): void {
-  if (!ws) return;
-  try {
-    ws.close();
-  } catch {
-    // websocket-polyfill throws if connection_ is undefined (never connected)
-  }
 }
 
 function pubkeyToNpub(pubkey: string): string {

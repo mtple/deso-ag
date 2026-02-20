@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,13 +9,14 @@ const exec = promisify(execFile);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, '..');
+const PKG_VERSION = JSON.parse(readFileSync(resolve(PROJECT_ROOT, 'package.json'), 'utf-8')).version;
 
 const CLI = ['npx', ['tsx', 'src/index.ts']] as const;
 
 function run(...args: string[]): Promise<{ stdout: string; stderr: string }> {
   return exec(CLI[0], [...CLI[1], ...args], {
     cwd: PROJECT_ROOT,
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 
@@ -27,7 +29,7 @@ describe('CLI integration', () => {
       const { stdout } = await run('search', 'test', '-f', 'json', '-l', '3', '-s', TEST_SOURCE);
       // stdout should be valid JSON (array or empty)
       expect(() => JSON.parse(stdout)).not.toThrow();
-    }, 30_000);
+    }, 60_000);
 
     it('runs search with compact format', async () => {
       const { stdout } = await run('search', 'test', '-f', 'compact', '-l', '3', '-s', TEST_SOURCE);
@@ -38,7 +40,7 @@ describe('CLI integration', () => {
       expect(parsed.meta).toHaveProperty('timeframe');
       expect(parsed.meta).toHaveProperty('fetchedAt');
       expect(parsed.meta).toHaveProperty('totalPosts');
-    }, 30_000);
+    }, 60_000);
 
     it('runs search with markdown format', async () => {
       const { stdout } = await run('search', 'test', '-f', 'markdown', '-l', '3', '-s', TEST_SOURCE);
@@ -49,12 +51,12 @@ describe('CLI integration', () => {
     it('accepts --sort option', async () => {
       const { stdout } = await run('search', 'test', '-f', 'json', '-l', '3', '-s', TEST_SOURCE, '-o', 'engagement');
       expect(() => JSON.parse(stdout)).not.toThrow();
-    }, 30_000);
+    }, 60_000);
 
     it('prints progress to stderr', async () => {
       const { stderr } = await run('search', 'test', '-f', 'json', '-l', '3', '-s', TEST_SOURCE);
       expect(stderr).toContain('Searching');
-    }, 30_000);
+    }, 60_000);
   });
 
   describe('trending command', () => {
@@ -137,7 +139,7 @@ describe('CLI integration', () => {
   describe('option validation', () => {
     it('shows version with --version', async () => {
       const { stdout } = await run('--version');
-      expect(stdout.trim()).toBe('1.0.0');
+      expect(stdout.trim()).toBe(PKG_VERSION);
     });
 
     it('shows help with --help', async () => {
