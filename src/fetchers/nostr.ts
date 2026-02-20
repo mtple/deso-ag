@@ -166,7 +166,7 @@ async function queryRelayByIds(relay: string, ids: string[]): Promise<NostrEvent
     let ws: WebSocket | null = null;
 
     const timeout = setTimeout(() => {
-      if (ws) ws.close();
+      safeClose(ws);
       resolve(events);
     }, 8000);
 
@@ -189,7 +189,7 @@ async function queryRelayByIds(relay: string, ids: string[]): Promise<NostrEvent
             events.push(data[2] as NostrEvent);
           } else if (data[0] === 'EOSE') {
             clearTimeout(timeout);
-            ws?.close();
+            safeClose(ws);
             resolve(events);
           }
         } catch {
@@ -247,7 +247,7 @@ async function queryRelay(relay: string, since: number, limit: number, query?: s
     let ws: WebSocket | null = null;
 
     const timeout = setTimeout(() => {
-      if (ws) ws.close();
+      safeClose(ws);
       resolve(events);
     }, 5000);
 
@@ -278,7 +278,7 @@ async function queryRelay(relay: string, since: number, limit: number, query?: s
             events.push(data[2] as NostrEvent);
           } else if (data[0] === 'EOSE') {
             clearTimeout(timeout);
-            ws?.close();
+            safeClose(ws);
             resolve(events);
           }
         } catch {
@@ -310,7 +310,7 @@ async function fetchProfiles(pubkeys: string[], cache: Map<string, NostrProfile>
   return new Promise((resolve) => {
     let ws: WebSocket | null = null;
     const timeout = setTimeout(() => {
-      if (ws) ws.close();
+      safeClose(ws);
       resolve();
     }, 3000);
 
@@ -335,7 +335,7 @@ async function fetchProfiles(pubkeys: string[], cache: Map<string, NostrProfile>
             cache.set(event.pubkey, profile);
           } else if (data[0] === 'EOSE') {
             clearTimeout(timeout);
-            ws?.close();
+            safeClose(ws);
             resolve();
           }
         } catch {
@@ -363,6 +363,19 @@ function extractHashtags(tags: string[][]): string[] {
   return tags
     .filter(tag => tag[0] === 't')
     .map(tag => tag[1]);
+}
+
+/**
+ * Safely close a WebSocket, guarding against the websocket-polyfill crash
+ * where close() throws if the connection was never established.
+ */
+function safeClose(ws: WebSocket | null): void {
+  if (!ws) return;
+  try {
+    ws.close();
+  } catch {
+    // websocket-polyfill throws if connection_ is undefined (never connected)
+  }
 }
 
 function pubkeyToNpub(pubkey: string): string {
