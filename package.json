@@ -1,7 +1,7 @@
 {
   "name": "deso-ag",
   "version": "1.0.6",
-  "description": "CLI tool for aggregating posts from decentralized social protocols (Farcaster, Lens, Nostr, Bluesky)",
+  "description": "CLI tool for aggregating posts from decentralized social protocols (Farcaster, Hypersnap, Lens, Nostr, Bluesky)",
   "main": "dist/lib.js",
   "bin": {
     "deso-ag": "./dist/index.js"
@@ -28,6 +28,7 @@
   },
   "keywords": [
     "farcaster",
+    "hypersnap",
     "lens",
     "nostr",
     "bluesky",

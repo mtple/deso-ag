@@ -1,6 +1,6 @@
 ---
 name: deso-research
-description: Research and analyze content across decentralized social networks (Farcaster, Lens, Nostr, Bluesky) using the deso-ag CLI tool. Use this skill when users want to research topics on decentralized social platforms, analyze trending content, extract discussion terms, browse Farcaster channels, or compare engagement across networks. Trigger on phrases like "research X on Farcaster", "what's trending on Lens", "analyze [topic] across deso networks", "search deso for [topic]", "extract trending terms", "browse Farcaster channels", "what are people saying about X on Farcaster/Lens/Nostr/Bluesky", or any query about decentralized social media content. Make sure to use this skill for any decentralized social research tasks, even if the user just says "check Farcaster" or "look up [topic] on Lens".
+description: Research and analyze content across decentralized social networks (Farcaster, Hypersnap, Lens, Nostr, Bluesky) using the deso-ag CLI tool. Use this skill when users want to research topics on decentralized social platforms, analyze trending content, extract discussion terms, browse Farcaster channels, or compare engagement across networks. Trigger on phrases like "research X on Farcaster", "what's trending on Lens", "analyze [topic] across deso networks", "search deso for [topic]", "extract trending terms", "browse Farcaster channels", "what are people saying about X on Farcaster/Hypersnap/Lens/Nostr/Bluesky", or any query about decentralized social media content. Make sure to use this skill for any decentralized social research tasks, even if the user just says "check Farcaster" or "look up [topic] on Lens".
 metadata:
   openclaw:
     emoji: "🔍"
@@ -21,7 +21,7 @@ metadata:
 
 Research and analyze content across decentralized social networks using [deso-ag](https://www.npmjs.com/package/deso-ag).
 
-deso-ag is a CLI tool that aggregates posts from Farcaster, Lens, Nostr, and Bluesky. It provides search, trending, term extraction, and channel browsing — with a `compact` output format designed specifically for AI agent consumption.
+deso-ag is a CLI tool that aggregates posts from Farcaster, Hypersnap, Lens, Nostr, and Bluesky. It provides search, trending, term extraction, and channel browsing — with a `compact` output format designed specifically for AI agent consumption.
 
 ## Prerequisites
 
@@ -39,13 +39,14 @@ npm install -g deso-ag
 
 ### API Keys (Optional)
 
-deso-ag works without any keys — Lens, Nostr, and Bluesky trending all function keyless. For full functionality, these environment variables unlock additional networks:
+deso-ag works without any keys — Hypersnap, Lens, Nostr, and Bluesky trending all function keyless. For full functionality, these environment variables unlock additional networks:
 
 | Variable | Unlocks | How to Get |
 |----------|---------|------------|
 | `NEYNAR_API_KEY` | Farcaster search + trending | Free at neynar.com |
 | `BLUESKY_IDENTIFIER` | Bluesky search | Your handle (e.g. user.bsky.social) |
 | `BLUESKY_APP_PASSWORD` | Bluesky search | bsky.app/settings/app-passwords |
+| `HYPERSNAP_NODE_URL` | Reading Hypersnap from a node other than the public one | Your node's HTTP API, e.g. http://localhost:3381 |
 
 Without a key, that network is silently skipped. Everything else works normally.
 
@@ -75,8 +76,9 @@ deso-ag search "AI crypto" --format compact --limit 15
 # Network-specific search
 deso-ag search "NFT" --sources farcaster --format compact
 
-# Channel-specific (Farcaster only)
+# Channel-specific (Farcaster and Hypersnap)
 deso-ag search --channel dev --sources farcaster --format compact
+deso-ag search --channel dev --sources hypersnap --format compact
 
 # Sort by recency for latest discussions
 deso-ag search "base chain" --sort recent --format compact --limit 10
@@ -211,12 +213,12 @@ holdings. Early stage but worth watching.
 
 | Option | Short | Values | Default |
 |--------|-------|--------|---------|
-| `--sources` | `-s` | farcaster,lens,nostr,bluesky | all |
+| `--sources` | `-s` | farcaster,hypersnap,lens,nostr,bluesky | all |
 | `--timeframe` | `-t` | 24h, 48h, week | 24h |
 | `--format` | `-f` | json, markdown, summary, compact | varies |
 | `--limit` | `-l` | any positive integer | 25 |
 | `--sort` | `-o` | engagement, recent, relevance | varies |
-| `--channel` | `-c` | channel ID (Farcaster only) | none |
+| `--channel` | `-c` | channel ID (Farcaster and Hypersnap) | none |
 | `--top` | `-n` | any positive integer (terms only) | 3 |
 
 For the full command reference with output schemas and library usage, see `references/command-reference.md`.
@@ -226,4 +228,5 @@ For the full command reference with output schemas and library usage, see `refer
 - If deso-ag is not found, install it: `npm install -g deso-ag`
 - If no results return for a network, that network's API key is likely missing — inform the user
 - Nostr can be slow or inconsistent — retry once if it times out
+- Hypersnap is a fork of Farcaster: older casts can appear on both, and the two are separate networks since the fork. Treat them as distinct sources when comparing
 - If you hit rate limit errors, let the user know and suggest they run their own infrastructure for heavy usage

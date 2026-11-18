@@ -2,7 +2,7 @@
 
 **Decentralized Social Aggregator** - A CLI tool and library for aggregating posts from decentralized social protocols.
 
-Search and view content across **Farcaster**, **Lens**, **Nostr**, and **Bluesky** from your terminal or programmatically from your agent.
+Search and view content across **Farcaster**, **Hypersnap**, **Lens**, **Nostr**, and **Bluesky** from your terminal or programmatically from your agent.
 
 ## Installation
 
@@ -31,8 +31,9 @@ pnpm install
 | `NEYNAR_API_KEY` | For Farcaster | None — Farcaster is skipped | Neynar API key. Get one free at [neynar.com](https://neynar.com) |
 | `BLUESKY_IDENTIFIER` | For Bluesky search | None — Bluesky search is skipped, trending still works | Your Bluesky handle (e.g. `user.bsky.social`) |
 | `BLUESKY_APP_PASSWORD` | For Bluesky search | None — Bluesky search is skipped, trending still works | App password from [bsky.app/settings/app-passwords](https://bsky.app/settings/app-passwords) |
+| `HYPERSNAP_NODE_URL` | No | `https://haatz.quilibrium.com` | Hypersnap node to read from. Set it to your own node (e.g. `http://localhost:3381`) to skip the public one |
 
-Lens, Nostr, and Bluesky trending work without any keys. Bluesky search requires authentication.
+Hypersnap, Lens, Nostr, and Bluesky trending work without any keys. Bluesky search requires authentication.
 
 Add keys to your shell profile so they persist across sessions:
 
@@ -55,6 +56,7 @@ Search for posts across networks.
 deso-ag search "ethereum"
 deso-ag search "AI" --sources nostr
 deso-ag search --channel dev --sources farcaster
+deso-ag search "quilibrium" --sources hypersnap
 ```
 
 Multi-word queries use AND semantics (all terms must match):
@@ -71,6 +73,7 @@ Get trending posts from all networks.
 ```bash
 deso-ag trending
 deso-ag trending --sources farcaster,lens
+deso-ag trending --sources hypersnap
 deso-ag trending --format json --limit 50
 ```
 
@@ -99,9 +102,9 @@ All commands accept the following options (except where noted):
 
 | Option | Description | Values | Default |
 |--------|-------------|--------|---------|
-| `-s, --sources` | Networks to query | `farcaster`, `lens`, `nostr`, `bluesky` (comma-separated) | `farcaster,lens,nostr,bluesky` (all) |
+| `-s, --sources` | Networks to query | `farcaster`, `hypersnap`, `lens`, `nostr`, `bluesky` (comma-separated) | `farcaster,hypersnap,lens,nostr,bluesky` (all) |
 | `-t, --timeframe` | Time range for posts | `24h`, `48h`, `week` | `24h` |
-| `-c, --channel` | Filter by channel | Any channel ID (Farcaster only) | none |
+| `-c, --channel` | Filter by channel | Any channel ID (Farcaster and Hypersnap) | none |
 | `-f, --format` | Output format | `json`, `markdown`, `summary`, `compact` | `markdown` (search), `summary` (trending) |
 | `-l, --limit` | Max posts per source | Any positive integer | `25` |
 | `-o, --sort` | Sort order | `engagement`, `recent`, `relevance` | `relevance` (search), `engagement` (trending) |
@@ -172,7 +175,7 @@ For agents that run in Node.js, import `aggregate()` directly instead of shellin
 import { aggregate } from 'deso-ag';
 
 const result = await aggregate({
-  sources: ['farcaster', 'lens', 'nostr', 'bluesky'],
+  sources: ['farcaster', 'hypersnap', 'lens', 'nostr', 'bluesky'],
   timeframe: '24h',
   query: 'AI agents',
   limit: 20,
@@ -204,7 +207,7 @@ for (const st of result.bySource) {
 Individual fetchers and utilities are also exported:
 
 ```typescript
-import { fetchFarcaster, fetchLens, fetchNostr, fetchBluesky, computeEngagementScore, matchesQuery, extractTerms } from 'deso-ag';
+import { fetchFarcaster, fetchHypersnap, fetchLens, fetchNostr, fetchBluesky, computeEngagementScore, matchesQuery, extractTerms } from 'deso-ag';
 ```
 
 ## Examples
@@ -228,6 +231,9 @@ deso-ag search --channel dev -s farcaster
 # Export trending Nostr posts as JSON
 deso-ag trending -s nostr -f json > nostr-trending.json
 
+# Trending on Hypersnap, read from your own node
+HYPERSNAP_NODE_URL=http://localhost:3381 deso-ag trending -s hypersnap -f summary
+
 # Search Bluesky for discussions
 deso-ag search "ethereum" -s bluesky -l 5
 
@@ -249,6 +255,7 @@ deso-ag terms -f json -s farcaster,nostr -l 10
 | Network | API | Auth |
 |---------|-----|------|
 | **Farcaster** | [Neynar API](https://neynar.com) - trending feed and full-text search | `NEYNAR_API_KEY` required |
+| **Hypersnap** | [Hypersnap](https://hypersnap.org) node v2 API (Neynar-compatible) - trending feed, cast search, channel feeds. Links open in [Quilcast](https://quilcast.com) | None |
 | **Lens** | [Lens V3 GraphQL API](https://api.lens.xyz) - server-side search, recent posts | None |
 | **Nostr** | [nostr.wine trending API](https://docs.nostr.wine/api/trending) + public relays (relay.damus.io, nos.lol, relay.snort.social) | None |
 | **Bluesky** | [AT Protocol API](https://docs.bsky.app) - public "What's Hot" feed for trending, authenticated search via `app.bsky.feed.searchPosts` | None (trending), `BLUESKY_IDENTIFIER` + `BLUESKY_APP_PASSWORD` (search) |
@@ -258,6 +265,7 @@ All networks return engagement stats (likes, reposts, replies) and support timef
 ## Limitations
 
 - **Farcaster**: Requires `NEYNAR_API_KEY`. Without it, Farcaster is skipped.
+- **Hypersnap**: A fork of Farcaster, so casts from before the fork can show up under both networks; cross-source dedup keeps the copy with more engagement. Search hits are filled in with likes/recasts/replies through an extra `cast/bulk` request, and keep zero engagement if that request fails. With `--channel`, a query is matched against the channel's recent casts rather than searched on the node. There's no 48h trending window, so `48h` reads the 7-day ranking and cuts it to 48h.
 - **Nostr**: Relay responses can be slow or inconsistent depending on network conditions.
 - **Rate limits**: All APIs have rate limits. For heavy usage, consider running your own infrastructure.
 

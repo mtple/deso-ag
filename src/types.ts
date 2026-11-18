@@ -1,4 +1,4 @@
-export type Source = 'farcaster' | 'lens' | 'nostr' | 'bluesky';
+export type Source = 'farcaster' | 'hypersnap' | 'lens' | 'nostr' | 'bluesky';
 export type Timeframe = '24h' | '48h' | 'week';
 export type OutputFormat = 'json' | 'markdown' | 'summary' | 'compact';
 export type SortOrder = 'engagement' | 'recent' | 'relevance';

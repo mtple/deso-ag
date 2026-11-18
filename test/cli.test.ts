@@ -178,6 +178,13 @@ describe('CLI integration', () => {
       }
     }, 30_000);
 
+    it('hypersnap completes and returns valid json (no key needed)', async () => {
+      const { stdout, stderr } = await run('trending', '-f', 'json', '-l', '3', '-s', 'hypersnap');
+      expect(stderr).not.toContain('⚠️  hypersnap:');
+      const parsed = JSON.parse(stdout);
+      expect(parsed).toBeInstanceOf(Array);
+    }, 30_000);
+
     it('lens completes and returns valid json', async () => {
       const { stdout, stderr } = await run('trending', '-f', 'json', '-l', '3', '-s', 'lens');
       expect(stderr).not.toContain('⚠️  lens:');
@@ -205,9 +212,9 @@ describe('CLI integration', () => {
     }, 30_000);
 
     it('all sources together completes and returns valid output', async () => {
-      const { stdout, stderr } = await run('trending', '-f', 'compact', '-l', '3', '-s', 'farcaster,lens,nostr,bluesky');
+      const { stdout, stderr } = await run('trending', '-f', 'compact', '-l', '3', '-s', 'farcaster,hypersnap,lens,nostr,bluesky');
       const parsed = JSON.parse(stdout);
-      expect(parsed.meta.sources).toHaveLength(4);
+      expect(parsed.meta.sources).toHaveLength(5);
       if (HAS_ENV_FILE) {
         expect(stderr).not.toContain('requires NEYNAR_API_KEY');
         expect(stderr).not.toContain('requires BLUESKY_IDENTIFIER');

@@ -142,10 +142,12 @@ describe('formatOutput', () => {
         makePost({ id: '1', source: 'farcaster' }),
         makePost({ id: '2', source: 'lens' }),
         makePost({ id: '3', source: 'farcaster' }),
+        makePost({ id: '4', source: 'hypersnap' }),
       ];
       const result = formatOutput(posts, 'summary');
       expect(result).toContain('Farcaster: 2 posts');
       expect(result).toContain('Lens: 1 posts');
+      expect(result).toContain('Hypersnap: 1 posts');
     });
 
     it('shows total post count', () => {

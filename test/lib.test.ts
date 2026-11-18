@@ -6,6 +6,9 @@ import type { FetchResult } from '../src/types.js';
 vi.mock('../src/fetchers/farcaster.js', () => ({
   fetchFarcaster: vi.fn(),
 }));
+vi.mock('../src/fetchers/hypersnap.js', () => ({
+  fetchHypersnap: vi.fn(),
+}));
 vi.mock('../src/fetchers/lens.js', () => ({
   fetchLens: vi.fn(),
 }));
@@ -19,11 +22,13 @@ vi.mock('../src/fetchers/bluesky.js', () => ({
 // Import after mocking
 const { aggregate } = await import('../src/lib.js');
 const { fetchFarcaster } = await import('../src/fetchers/farcaster.js');
+const { fetchHypersnap } = await import('../src/fetchers/hypersnap.js');
 const { fetchLens } = await import('../src/fetchers/lens.js');
 const { fetchNostr } = await import('../src/fetchers/nostr.js');
 const { fetchBluesky } = await import('../src/fetchers/bluesky.js');
 
 const mockFarcaster = vi.mocked(fetchFarcaster);
+const mockHypersnap = vi.mocked(fetchHypersnap);
 const mockLens = vi.mocked(fetchLens);
 const mockNostr = vi.mocked(fetchNostr);
 const mockBluesky = vi.mocked(fetchBluesky);
@@ -65,6 +70,24 @@ describe('aggregate', () => {
     expect(mockFarcaster).toHaveBeenCalledOnce();
     expect(mockLens).toHaveBeenCalledOnce();
     expect(mockNostr).not.toHaveBeenCalled();
+    expect(mockHypersnap).not.toHaveBeenCalled();
+  });
+
+  it('routes hypersnap to its own fetcher', async () => {
+    mockFarcaster.mockResolvedValue({ posts: [], source: 'farcaster' });
+    mockHypersnap.mockResolvedValue({
+      posts: [makePost({ id: 'h1', source: 'hypersnap', content: 'a cast on hypersnap' })],
+      source: 'hypersnap',
+    });
+
+    const result = await aggregate({
+      sources: ['farcaster', 'hypersnap'],
+      timeframe: '24h',
+    });
+
+    expect(mockHypersnap).toHaveBeenCalledOnce();
+    expect(result.meta.sources.map(s => s.name)).toEqual(['farcaster', 'hypersnap']);
+    expect(result.posts.map(p => p.source)).toEqual(['hypersnap']);
   });
 
   it('merges posts from multiple sources', async () => {
@@ -245,9 +268,10 @@ describe('aggregate', () => {
     mockLens.mockResolvedValue({ posts: [], source: 'lens' });
     mockNostr.mockResolvedValue({ posts: [], source: 'nostr' });
     mockBluesky.mockResolvedValue({ posts: [], source: 'bluesky' });
+    mockHypersnap.mockResolvedValue({ posts: [], source: 'hypersnap' });
 
     const result = await aggregate({
-      sources: ['farcaster', 'lens', 'nostr', 'bluesky'],
+      sources: ['farcaster', 'hypersnap', 'lens', 'nostr', 'bluesky'],
       timeframe: '24h',
     });
 

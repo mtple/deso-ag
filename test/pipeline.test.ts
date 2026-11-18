@@ -248,7 +248,7 @@ describe('buildMeta', () => {
 
 describe('parseSources', () => {
   it('parses comma-separated sources', () => {
-    expect(parseSources('farcaster,lens,nostr,bluesky')).toEqual(['farcaster', 'lens', 'nostr', 'bluesky']);
+    expect(parseSources('farcaster,hypersnap,lens,nostr,bluesky')).toEqual(['farcaster', 'hypersnap', 'lens', 'nostr', 'bluesky']);
   });
 
   it('handles spaces', () => {
@@ -261,6 +261,7 @@ describe('parseSources', () => {
 
   it('handles single source', () => {
     expect(parseSources('bluesky')).toEqual(['bluesky']);
+    expect(parseSources('hypersnap')).toEqual(['hypersnap']);
   });
 
   it('is case-insensitive', () => {

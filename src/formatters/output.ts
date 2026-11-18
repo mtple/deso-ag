@@ -200,6 +200,7 @@ function formatSummary(posts: Post[]): string {
 function getSourceEmoji(source: Source): string {
   switch (source) {
     case 'farcaster': return '🟣';
+    case 'hypersnap': return '🔷';
     case 'lens': return '🌿';
     case 'nostr': return '⚡';
     case 'bluesky': return '🦋';
@@ -209,6 +210,7 @@ function getSourceEmoji(source: Source): string {
 function getSourceName(source: Source): string {
   switch (source) {
     case 'farcaster': return 'Farcaster';
+    case 'hypersnap': return 'Hypersnap';
     case 'lens': return 'Lens';
     case 'nostr': return 'Nostr';
     case 'bluesky': return 'Bluesky';

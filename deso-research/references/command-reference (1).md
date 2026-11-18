@@ -99,9 +99,9 @@ All commands accept these (except where noted):
 
 | Option | Short | Description | Values | Default |
 |--------|-------|-------------|--------|---------|
-| `--sources` | `-s` | Networks to query | farcaster, lens, nostr, bluesky (comma-separated) | all four |
+| `--sources` | `-s` | Networks to query | farcaster, hypersnap, lens, nostr, bluesky (comma-separated) | all five |
 | `--timeframe` | `-t` | Time range | 24h, 48h, week | 24h |
-| `--channel` | `-c` | Farcaster channel filter | Any channel ID | none |
+| `--channel` | `-c` | Channel filter (Farcaster and Hypersnap) | Any channel ID | none |
 | `--format` | `-f` | Output format | json, markdown, summary, compact | varies by command |
 | `--limit` | `-l` | Max posts per source | Any positive integer | 25 |
 | `--sort` | `-o` | Sort order | engagement, recent, relevance | varies by command |
@@ -174,6 +174,7 @@ Condensed overview with post counts and top content. Default for `trending`.
 | Network | Auth Required | Search | Trending | Notes |
 |---------|--------------|--------|----------|-------|
 | Farcaster | NEYNAR_API_KEY | ✅ | ✅ | Skipped entirely without key |
+| Hypersnap | None (optional HYPERSNAP_NODE_URL) | ✅ | ✅ | Farcaster fork; defaults to the public node haatz.quilibrium.com |
 | Lens | None | ✅ | ✅ | GraphQL API, always available |
 | Nostr | None | ✅ | ✅ | Can be slow/inconsistent |
 | Bluesky | None (trending) / BLUESKY_IDENTIFIER + BLUESKY_APP_PASSWORD (search) | Auth required | ✅ | Search needs app password |
@@ -188,7 +189,7 @@ For Node.js agents, import directly instead of CLI:
 import { aggregate } from 'deso-ag';
 
 const result = await aggregate({
-  sources: ['farcaster', 'lens', 'nostr', 'bluesky'],
+  sources: ['farcaster', 'hypersnap', 'lens', 'nostr', 'bluesky'],
   timeframe: '24h',
   query: 'AI agents',
   limit: 20,
@@ -214,4 +215,4 @@ for (const st of result.bySource) {
 }
 ```
 
-Individual exports: `fetchFarcaster`, `fetchLens`, `fetchNostr`, `fetchBluesky`, `computeEngagementScore`, `matchesQuery`, `extractTerms`.
+Individual exports: `fetchFarcaster`, `fetchHypersnap`, `fetchLens`, `fetchNostr`, `fetchBluesky`, `computeEngagementScore`, `matchesQuery`, `extractTerms`.

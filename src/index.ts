@@ -3,6 +3,7 @@
 import 'dotenv/config';
 import { Command } from 'commander';
 import { fetchFarcaster } from './fetchers/farcaster.js';
+import { fetchHypersnap } from './fetchers/hypersnap.js';
 import { fetchLens } from './fetchers/lens.js';
 import { fetchNostr } from './fetchers/nostr.js';
 import { fetchBluesky } from './fetchers/bluesky.js';
@@ -31,9 +32,9 @@ program
 program
   .command('search [query]')
   .description('Search for posts across decentralized social networks')
-  .option('-s, --sources <sources>', 'Comma-separated list of sources (farcaster,lens,nostr,bluesky)', 'farcaster,lens,nostr,bluesky')
+  .option('-s, --sources <sources>', 'Comma-separated list of sources (farcaster,hypersnap,lens,nostr,bluesky)', 'farcaster,hypersnap,lens,nostr,bluesky')
   .option('-t, --timeframe <timeframe>', 'Time range: 24h, 48h, week', '24h')
-  .option('-c, --channel <channel>', 'Filter by channel (Farcaster only)')
+  .option('-c, --channel <channel>', 'Filter by channel (Farcaster and Hypersnap)')
   .option('-f, --format <format>', 'Output format: json, markdown, summary, compact', 'markdown')
   .option('-l, --limit <limit>', 'Maximum posts per source', '25')
   .option('-o, --sort <sort>', 'Sort order: engagement, recent, relevance', 'relevance')
@@ -85,7 +86,7 @@ program
 program
   .command('trending')
   .description('Get trending posts from decentralized social networks')
-  .option('-s, --sources <sources>', 'Comma-separated list of sources (farcaster,lens,nostr,bluesky)', 'farcaster,lens,nostr,bluesky')
+  .option('-s, --sources <sources>', 'Comma-separated list of sources (farcaster,hypersnap,lens,nostr,bluesky)', 'farcaster,hypersnap,lens,nostr,bluesky')
   .option('-t, --timeframe <timeframe>', 'Time range: 24h, 48h, week', '24h')
   .option('-f, --format <format>', 'Output format: json, markdown, summary, compact', 'summary')
   .option('-l, --limit <limit>', 'Maximum posts per source', '25')
@@ -165,7 +166,7 @@ program
 program
   .command('terms')
   .description('Extract top discussion terms from posts')
-  .option('-s, --sources <sources>', 'Comma-separated list of sources (farcaster,lens,nostr,bluesky)', 'farcaster,lens,nostr,bluesky')
+  .option('-s, --sources <sources>', 'Comma-separated list of sources (farcaster,hypersnap,lens,nostr,bluesky)', 'farcaster,hypersnap,lens,nostr,bluesky')
   .option('-t, --timeframe <timeframe>', 'Time range: 24h, 48h, week', '24h')
   .option('-n, --top <count>', 'Number of top terms per source', '3')
   .option('-f, --format <format>', 'Output format: json, summary, compact', 'summary')
@@ -222,6 +223,9 @@ async function fetchFromSources(options: SearchOptions): Promise<FetchResult[]> 
     switch (source) {
       case 'farcaster':
         fetchers.push(fetchFarcaster(options));
+        break;
+      case 'hypersnap':
+        fetchers.push(fetchHypersnap(options));
         break;
       case 'lens':
         fetchers.push(fetchLens(options));

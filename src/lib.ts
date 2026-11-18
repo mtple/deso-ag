@@ -1,4 +1,5 @@
 import { fetchFarcaster } from './fetchers/farcaster.js';
+import { fetchHypersnap } from './fetchers/hypersnap.js';
 import { fetchLens } from './fetchers/lens.js';
 import { fetchNostr } from './fetchers/nostr.js';
 import { fetchBluesky } from './fetchers/bluesky.js';
@@ -12,6 +13,7 @@ export { formatOutput, computeEngagementScore, formatTermsSummary } from './form
 export { matchesQuery } from './utils/search.js';
 export { extractTerms, extractTermsBySource, tokenize } from './terms.js';
 export { fetchFarcaster } from './fetchers/farcaster.js';
+export { fetchHypersnap } from './fetchers/hypersnap.js';
 export { fetchLens } from './fetchers/lens.js';
 export { fetchNostr } from './fetchers/nostr.js';
 export { fetchBluesky } from './fetchers/bluesky.js';
@@ -30,6 +32,9 @@ export async function aggregate(options: SearchOptions): Promise<AggregateResult
     switch (source) {
       case 'farcaster':
         fetchers.push(fetchFarcaster(options));
+        break;
+      case 'hypersnap':
+        fetchers.push(fetchHypersnap(options));
         break;
       case 'lens':
         fetchers.push(fetchLens(options));
