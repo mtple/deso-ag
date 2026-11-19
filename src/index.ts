@@ -1,209 +1,187 @@
 #!/usr/bin/env node
 
-import 'dotenv/config';
-import { Command } from 'commander';
-import { fetchFarcaster } from './fetchers/farcaster.js';
-import { fetchHypersnap } from './fetchers/hypersnap.js';
-import { fetchLens } from './fetchers/lens.js';
-import { fetchNostr } from './fetchers/nostr.js';
-import { fetchBluesky } from './fetchers/bluesky.js';
+import dotenv from 'dotenv';
+import { createRequire } from 'node:module';
+import { Command, InvalidArgumentError, Option } from 'commander';
+import { aggregate } from './lib.js';
+import { fetchChannels } from './channels.js';
 import { formatOutput, formatTermsSummary } from './formatters/output.js';
 import {
-  mergeResults,
-  buildMeta,
+  SOURCES,
   parseSources,
   parseTimeframe,
   parseFormat,
   parseSortOrder,
+  parsePositiveInt,
 } from './pipeline.js';
 import { extractTermsBySource } from './terms.js';
-import type { SearchOptions, FetchResult } from './types.js';
+import type { AggregateResult, OutputFormat, SearchOptions } from './types.js';
 
-// Polyfill WebSocket for Node.js (needed for Nostr)
-import 'websocket-polyfill';
+// Load .env without printing anything: stdout carries JSON for agents
+dotenv.config({ quiet: true });
+
+// package.json sits one level up from both src/ and dist/
+const { version } = createRequire(import.meta.url)('../package.json') as { version: string };
+
+/** Turn a parser's error into commander's "invalid argument" message. */
+function strict<T>(parse: (value: string) => T): (value: string) => T {
+  return (value: string) => {
+    try {
+      return parse(value);
+    } catch (error) {
+      throw new InvalidArgumentError(error instanceof Error ? error.message : String(error));
+    }
+  };
+}
+
+const ALL_SOURCES = SOURCES.join(',');
+const sourcesOption = strict(parseSources);
+const timeframeOption = strict(parseTimeframe);
+const sortOption = strict(parseSortOrder);
+const limitOption = strict((v: string) => parsePositiveInt(v, 'limit'));
+const postFormatOption = strict((v: string) => parseFormat(v));
+const termsFormatOption = strict((v: string) => parseFormat(v, ['json', 'summary', 'compact']));
+const channelsFormatOption = strict((v: string) => parseFormat(v, ['json', 'summary']));
+
+function sourcesFlag(): Option {
+  return new Option('-s, --sources <sources>', `Comma-separated list of sources (${ALL_SOURCES})`)
+    .argParser(sourcesOption)
+    .default([...SOURCES], 'all');
+}
+
+function reportSourceErrors(meta: AggregateResult['meta']): void {
+  for (const source of meta.sources) {
+    if (source.error) {
+      console.error(`⚠️  ${source.name}: ${source.error}`);
+    }
+  }
+}
+
+async function runPosts(searchOptions: SearchOptions, format: OutputFormat, emptyMessage: string): Promise<void> {
+  const { posts, meta } = await aggregate(searchOptions);
+
+  reportSourceErrors(meta);
+  if (posts.length === 0) {
+    console.error(emptyMessage);
+  }
+
+  // Extract terms for compact format
+  const termsResult = format === 'compact' ? extractTermsBySource(posts, 3, searchOptions.timeframe) : undefined;
+
+  console.log(formatOutput(posts, format, meta, termsResult));
+}
 
 const program = new Command();
 
 program
   .name('deso-ag')
   .description('CLI tool for aggregating posts from decentralized social protocols')
-  .version('1.0.6');
+  .version(version);
 
 program
   .command('search [query]')
   .description('Search for posts across decentralized social networks')
-  .option('-s, --sources <sources>', 'Comma-separated list of sources (farcaster,hypersnap,lens,nostr,bluesky)', 'farcaster,hypersnap,lens,nostr,bluesky')
-  .option('-t, --timeframe <timeframe>', 'Time range: 24h, 48h, week', '24h')
+  .addOption(sourcesFlag())
+  .option('-t, --timeframe <timeframe>', 'Time range: 24h, 48h, week', timeframeOption, '24h')
   .option('-c, --channel <channel>', 'Filter by channel (Farcaster and Hypersnap)')
-  .option('-f, --format <format>', 'Output format: json, markdown, summary, compact', 'markdown')
-  .option('-l, --limit <limit>', 'Maximum posts per source', '25')
-  .option('-o, --sort <sort>', 'Sort order: engagement, recent, relevance', 'relevance')
+  .option('-f, --format <format>', 'Output format: json, markdown, summary, compact', postFormatOption, 'markdown')
+  .option('-l, --limit <limit>', 'Maximum posts per source', limitOption, 25)
+  .option('-o, --sort <sort>', 'Sort order: engagement, recent, relevance', sortOption, 'relevance')
   .action(async (query: string | undefined, options) => {
-    const sources = parseSources(options.sources);
-    const timeframe = parseTimeframe(options.timeframe);
-    const format = parseFormat(options.format);
-    const limit = parseInt(options.limit, 10) || 25;
-    const sort = parseSortOrder(options.sort);
-
     const searchOptions: SearchOptions = {
       query,
-      sources,
-      timeframe,
+      sources: options.sources,
+      timeframe: options.timeframe,
       channel: options.channel,
-      limit,
-      sort,
+      limit: options.limit,
+      sort: options.sort,
     };
 
-    const queryStr = query || 'all';
-    console.error(`\n🔍 Searching ${sources.join(', ')} for "${queryStr}" (${timeframe})...\n`);
+    console.error(`\n🔍 Searching ${searchOptions.sources.join(', ')} for "${query || 'all'}" (${searchOptions.timeframe})...\n`);
 
-    const results = await fetchFromSources(searchOptions);
-
-    // Merge, deduplicate, and sort all posts
-    const allPosts = mergeResults(results, sort, query);
-
-    // Build meta for compact format
-    const meta = buildMeta(results, searchOptions);
-
-    // Show any errors
-    for (const result of results) {
-      if (result.error) {
-        console.error(`⚠️  ${result.source}: ${result.error}`);
-      }
-    }
-
-    if (allPosts.length === 0) {
-      console.error('No posts found. Try different search terms or sources.\n');
-    }
-
-    // Extract terms for compact format
-    const termsResult = format === 'compact' ? extractTermsBySource(allPosts, 3, timeframe) : undefined;
-
-    // Output results
-    console.log(formatOutput(allPosts, format, meta, termsResult));
+    await runPosts(searchOptions, options.format, 'No posts found. Try different search terms or sources.\n');
   });
 
 program
   .command('trending')
   .description('Get trending posts from decentralized social networks')
-  .option('-s, --sources <sources>', 'Comma-separated list of sources (farcaster,hypersnap,lens,nostr,bluesky)', 'farcaster,hypersnap,lens,nostr,bluesky')
-  .option('-t, --timeframe <timeframe>', 'Time range: 24h, 48h, week', '24h')
-  .option('-f, --format <format>', 'Output format: json, markdown, summary, compact', 'summary')
-  .option('-l, --limit <limit>', 'Maximum posts per source', '25')
-  .option('-o, --sort <sort>', 'Sort order: engagement, recent, relevance', 'engagement')
+  .addOption(sourcesFlag())
+  .option('-t, --timeframe <timeframe>', 'Time range: 24h, 48h, week', timeframeOption, '24h')
+  .option('-f, --format <format>', 'Output format: json, markdown, summary, compact', postFormatOption, 'summary')
+  .option('-l, --limit <limit>', 'Maximum posts per source', limitOption, 25)
+  .option('-o, --sort <sort>', 'Sort order: engagement, recent, relevance', sortOption, 'engagement')
   .action(async (options) => {
-    const sources = parseSources(options.sources);
-    const timeframe = parseTimeframe(options.timeframe);
-    const format = parseFormat(options.format);
-    const limit = parseInt(options.limit, 10) || 25;
-    const sort = parseSortOrder(options.sort);
-
     const searchOptions: SearchOptions = {
-      sources,
-      timeframe,
-      limit,
-      sort,
+      sources: options.sources,
+      timeframe: options.timeframe,
+      limit: options.limit,
+      sort: options.sort,
     };
 
-    console.error(`\n📈 Fetching trending from ${sources.join(', ')} (${timeframe})...\n`);
+    console.error(`\n📈 Fetching trending from ${searchOptions.sources.join(', ')} (${searchOptions.timeframe})...\n`);
 
-    const results = await fetchFromSources(searchOptions);
-
-    // Merge, deduplicate, and sort all posts
-    const allPosts = mergeResults(results, sort);
-
-    // Build meta for compact format
-    const meta = buildMeta(results, searchOptions);
-
-    // Show any errors
-    for (const result of results) {
-      if (result.error) {
-        console.error(`⚠️  ${result.source}: ${result.error}`);
-      }
-    }
-
-    if (allPosts.length === 0) {
-      console.error('No posts found.\n');
-    }
-
-    // Extract terms for compact format
-    const termsResult = format === 'compact' ? extractTermsBySource(allPosts, 3, timeframe) : undefined;
-
-    // Output results
-    console.log(formatOutput(allPosts, format, meta, termsResult));
+    await runPosts(searchOptions, options.format, 'No posts found.\n');
   });
 
 program
   .command('channels')
-  .description('List popular Farcaster channels')
-  .option('-l, --limit <limit>', 'Maximum channels to show', '20')
+  .description('List popular Farcaster channels (falls back to a Hypersnap node)')
+  .option('-l, --limit <limit>', 'Maximum channels to show', limitOption, 20)
+  .option('-f, --format <format>', 'Output format: json, summary', channelsFormatOption, 'summary')
   .action(async (options) => {
-    const limit = parseInt(options.limit, 10) || 20;
-
-    console.error('\n📺 Popular Farcaster channels:\n');
-
     try {
-      const response = await fetch('https://api.farcaster.xyz/v2/all-channels');
-      if (!response.ok) throw new Error('Failed to fetch channels');
+      const result = await fetchChannels(options.limit);
 
-      const data = await response.json() as { result?: { channels?: Array<{ id: string; name: string; followerCount: number; description?: string }> } };
-      const channels = data.result?.channels || [];
+      if (result.source === 'hypersnap') {
+        console.error(`⚠️  Farcaster channel list unavailable (${result.fallbackReason}); showing Hypersnap's instead.`);
+      }
 
-      // Sort by follower count
-      const sorted = channels.sort((a, b) => (b.followerCount || 0) - (a.followerCount || 0)).slice(0, limit);
+      if (options.format === 'json') {
+        console.log(JSON.stringify(result.channels, null, 2));
+        return;
+      }
 
-      for (const ch of sorted) {
+      console.error(`\n📺 Popular ${result.source === 'hypersnap' ? 'Hypersnap' : 'Farcaster'} channels:\n`);
+      for (const ch of result.channels) {
         const desc = ch.description ? ch.description.slice(0, 60) + (ch.description.length > 60 ? '...' : '') : '';
-        console.log(`/${ch.id} (${(ch.followerCount || 0).toLocaleString()} followers)`);
+        console.log(`/${ch.id} (${ch.followerCount.toLocaleString()} followers)`);
         if (desc) console.log(`  ${desc}`);
         console.log('');
       }
     } catch (error) {
-      console.error('Failed to fetch channels:', error);
+      console.error(`Failed to fetch channels: ${error instanceof Error ? error.message : error}`);
+      process.exitCode = 1;
     }
   });
 
 program
   .command('terms')
   .description('Extract top discussion terms from posts')
-  .option('-s, --sources <sources>', 'Comma-separated list of sources (farcaster,hypersnap,lens,nostr,bluesky)', 'farcaster,hypersnap,lens,nostr,bluesky')
-  .option('-t, --timeframe <timeframe>', 'Time range: 24h, 48h, week', '24h')
-  .option('-n, --top <count>', 'Number of top terms per source', '3')
-  .option('-f, --format <format>', 'Output format: json, summary, compact', 'summary')
-  .option('-l, --limit <limit>', 'Maximum posts per source', '25')
+  .addOption(sourcesFlag())
+  .option('-t, --timeframe <timeframe>', 'Time range: 24h, 48h, week', timeframeOption, '24h')
+  .option('-n, --top <count>', 'Number of top terms per source', strict((v: string) => parsePositiveInt(v, 'top')), 3)
+  .option('-f, --format <format>', 'Output format: json, summary, compact', termsFormatOption, 'summary')
+  .option('-l, --limit <limit>', 'Maximum posts per source', limitOption, 25)
   .action(async (options) => {
-    const sources = parseSources(options.sources);
-    const timeframe = parseTimeframe(options.timeframe);
-    const format = parseFormat(options.format);
-    const limit = parseInt(options.limit, 10) || 25;
-    const topN = parseInt(options.top, 10) || 3;
-
     const searchOptions: SearchOptions = {
-      sources,
-      timeframe,
-      limit,
+      sources: options.sources,
+      timeframe: options.timeframe,
+      limit: options.limit,
       sort: 'engagement',
     };
 
-    console.error(`\n📊 Analyzing terms from ${sources.join(', ')} (${timeframe})...\n`);
+    console.error(`\n📊 Analyzing terms from ${searchOptions.sources.join(', ')} (${searchOptions.timeframe})...\n`);
 
-    const results = await fetchFromSources(searchOptions);
+    const { posts, meta } = await aggregate(searchOptions);
+    reportSourceErrors(meta);
 
-    for (const result of results) {
-      if (result.error) {
-        console.error(`⚠️  ${result.source}: ${result.error}`);
-      }
-    }
-
-    const allPosts = mergeResults(results, 'engagement');
-
-    if (allPosts.length === 0) {
+    if (posts.length === 0) {
       console.error('No posts found to analyze.\n');
     }
 
-    const termsResult = extractTermsBySource(allPosts, topN, timeframe);
+    const termsResult = extractTermsBySource(posts, options.top, searchOptions.timeframe);
 
-    switch (format) {
+    switch (options.format as OutputFormat) {
       case 'json':
         console.log(JSON.stringify(termsResult, null, 2));
         break;
@@ -216,30 +194,11 @@ program
     }
   });
 
-async function fetchFromSources(options: SearchOptions): Promise<FetchResult[]> {
-  const fetchers: Promise<FetchResult>[] = [];
-
-  for (const source of options.sources) {
-    switch (source) {
-      case 'farcaster':
-        fetchers.push(fetchFarcaster(options));
-        break;
-      case 'hypersnap':
-        fetchers.push(fetchHypersnap(options));
-        break;
-      case 'lens':
-        fetchers.push(fetchLens(options));
-        break;
-      case 'nostr':
-        fetchers.push(fetchNostr(options));
-        break;
-      case 'bluesky':
-        fetchers.push(fetchBluesky(options));
-        break;
-    }
-  }
-
-  return Promise.all(fetchers);
-}
-
-program.parseAsync().then(() => process.exit(0));
+// Exit explicitly: open relay sockets and keep-alive connections would otherwise hold the process
+program.parseAsync().then(
+  () => process.exit(process.exitCode ?? 0),
+  (error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  },
+);

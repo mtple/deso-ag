@@ -137,6 +137,15 @@ describe('formatOutput', () => {
   });
 
   describe('summary format', () => {
+    it('keeps the order it was given (respects --sort)', () => {
+      const posts = [
+        makePost({ id: 'new', source: 'lens', author: { username: 'newquiet' }, content: 'new quiet post', engagement: { likes: 1 } }),
+        makePost({ id: 'old', source: 'lens', author: { username: 'oldloud' }, content: 'old popular post', engagement: { likes: 100 } }),
+      ];
+      const result = formatOutput(posts, 'summary');
+      expect(result.indexOf('@newquiet')).toBeLessThan(result.indexOf('@oldloud'));
+    });
+
     it('groups posts by source', () => {
       const posts = [
         makePost({ id: '1', source: 'farcaster' }),

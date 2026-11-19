@@ -79,23 +79,25 @@ deso-ag terms --format json --sources farcaster,nostr --limit 10
 
 ## channels
 
-Browse popular Farcaster channels.
+Browse popular channels, most-followed first. Reads Farcaster's channel list and falls back to a Hypersnap node when that can't be reached.
 
 ```
 deso-ag channels [options]
 ```
 
+**Options:** `-l, --limit <n>` (default 20), `-f, --format json|summary` (default summary)
+
 **Examples:**
 ```bash
 deso-ag channels
-deso-ag channels --limit 50
+deso-ag channels --limit 50 --format json
 ```
 
 ---
 
 ## Global Options
 
-All commands accept these (except where noted):
+All commands accept these (except where noted). Invalid values are rejected with an error listing the valid ones:
 
 | Option | Short | Description | Values | Default |
 |--------|-------|-------------|--------|---------|
@@ -176,8 +178,8 @@ Condensed overview with post counts and top content. Default for `trending`.
 | Farcaster | NEYNAR_API_KEY | ✅ | ✅ | Skipped entirely without key |
 | Hypersnap | None (optional HYPERSNAP_NODE_URL) | ✅ | ✅ | Farcaster fork; defaults to the public node haatz.quilibrium.com |
 | Lens | None | ✅ | ✅ | GraphQL API, always available |
-| Nostr | None | ✅ | ✅ | Can be slow/inconsistent |
-| Bluesky | None (trending) / BLUESKY_IDENTIFIER + BLUESKY_APP_PASSWORD (search) | Auth required | ✅ | Search needs app password |
+| Nostr | None | ✅ | ✅ | nostr.wine search + relay scan; trending covers 48h at most |
+| Bluesky | None for trending; search tries the public endpoint, then BLUESKY_IDENTIFIER + BLUESKY_APP_PASSWORD | ✅ | ✅ | Search limited to the timeframe with `since` |
 
 ---
 
@@ -215,4 +217,4 @@ for (const st of result.bySource) {
 }
 ```
 
-Individual exports: `fetchFarcaster`, `fetchHypersnap`, `fetchLens`, `fetchNostr`, `fetchBluesky`, `computeEngagementScore`, `matchesQuery`, `extractTerms`.
+Individual exports: `fetchFarcaster`, `fetchHypersnap`, `fetchLens`, `fetchNostr`, `fetchBluesky`, `fetchChannels`, `computeEngagementScore`, `matchesQuery`, `extractTerms`, and the option lists `SOURCES`, `TIMEFRAMES`, `OUTPUT_FORMATS`, `SORT_ORDERS`.

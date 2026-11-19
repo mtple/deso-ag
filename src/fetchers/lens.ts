@@ -5,6 +5,31 @@ import { matchesQuery } from '../utils/search.js';
 // Lens V3 API endpoint
 const LENS_API = 'https://api.lens.xyz/graphql';
 
+const REQUEST_TIMEOUT_MS = 10000;
+const MAX_PAGES = 3;
+
+/**
+ * Every Lens v3 post metadata type that carries text. Image, video, audio
+ * and the rest keep their caption in `content`, so they count as posts too.
+ */
+const METADATA_TYPES = [
+  'TextOnlyMetadata',
+  'ArticleMetadata',
+  'LinkMetadata',
+  'ImageMetadata',
+  'VideoMetadata',
+  'AudioMetadata',
+  'EmbedMetadata',
+  'EventMetadata',
+  'CheckingInMetadata',
+  'LivestreamMetadata',
+  'MintMetadata',
+  'SpaceMetadata',
+  'StoryMetadata',
+  'ThreeDMetadata',
+  'TransactionMetadata',
+];
+
 interface LensPost {
   slug: string;
   timestamp: string;
@@ -25,56 +50,99 @@ interface LensPost {
 interface LensResponse {
   data?: {
     posts?: {
-      items: LensPost[];
+      items: (LensPost | Record<string, never>)[];
+      pageInfo?: { next?: string | null };
     };
   };
   errors?: Array<{ message: string }>;
 }
 
+const POSTS_QUERY = `
+  query GetPosts($request: PostsRequest!) {
+    posts(request: $request) {
+      items {
+        ... on Post {
+          slug
+          timestamp
+          author {
+            username {
+              value
+              localName
+            }
+            metadata {
+              name
+            }
+          }
+          metadata {
+            ${METADATA_TYPES.map(t => `... on ${t} { content }`).join('\n            ')}
+          }
+          stats {
+            reactions
+            reposts
+            comments
+          }
+        }
+      }
+      pageInfo {
+        next
+      }
+    }
+  }
+`;
+
+function lensPostToPost(post: LensPost): Post {
+  const localName = post.author?.username?.localName;
+  return {
+    id: post.slug,
+    source: 'lens' as const,
+    author: {
+      username: localName || post.author?.username?.value || 'unknown',
+      displayName: post.author?.metadata?.name,
+      profileUrl: localName ? `https://hey.xyz/u/${localName}` : undefined,
+    },
+    content: post.metadata?.content || '',
+    timestamp: new Date(post.timestamp),
+    url: `https://hey.xyz/posts/${post.slug}`,
+    engagement: {
+      likes: post.stats?.reactions || 0,
+      reposts: post.stats?.reposts || 0,
+      replies: post.stats?.comments || 0,
+    },
+  };
+}
+
 export async function fetchLens(options: SearchOptions): Promise<FetchResult> {
+  const limit = options.limit || 25;
   const cutoff = getTimeframeCutoff(options.timeframe);
+  const query = options.query;
+
+  const keep = (post: Post): boolean =>
+    post.timestamp >= cutoff &&
+    post.content.trim().length > 0 &&
+    (!query || matchesQuery(post.content, post.tags || [], query));
 
   try {
-    const posts = await fetchLensPosts(options.limit || 50, options.query);
+    const posts: Post[] = [];
+    let cursor: string | undefined;
 
-    let mappedPosts: Post[] = posts
-      .filter(post => {
-        if (!post) return false;
-        if (new Date(post.timestamp) < cutoff) return false;
-        // Filter out empty content
-        const content = post.metadata?.content || '';
-        if (content.trim().length === 0) return false;
-        return true;
-      })
-      .map(post => ({
-        id: post.slug,
-        source: 'lens' as const,
-        author: {
-          username: post.author?.username?.localName || post.author?.username?.value || 'unknown',
-          displayName: post.author?.metadata?.name,
-          profileUrl: post.author?.username?.localName
-            ? `https://hey.xyz/u/${post.author.username.localName}`
-            : undefined,
-        },
-        content: post.metadata?.content || '',
-        timestamp: new Date(post.timestamp),
-        url: `https://hey.xyz/posts/${post.slug}`,
-        engagement: {
-          likes: post.stats?.reactions || 0,
-          reposts: post.stats?.reposts || 0,
-          replies: post.stats?.comments || 0,
-        },
-      }));
+    // Without a query the feed is newest-first, so read until the window closes;
+    // with one, read a few pages of search results
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const { items, next } = await fetchLensPage(query, cursor);
+      const pagePosts = items
+        .filter((item): item is LensPost => Boolean(item && 'slug' in item && item.timestamp))
+        .map(lensPostToPost);
 
-    // Additional client-side query filter (AND semantics for multi-word queries)
-    if (options.query) {
-      mappedPosts = mappedPosts.filter(p =>
-        matchesQuery(p.content, p.tags || [], options.query!)
-      );
+      posts.push(...pagePosts.filter(keep));
+      if (posts.length >= limit) break;
+
+      cursor = next || undefined;
+      if (!cursor || pagePosts.length === 0) break;
+      if (!query && pagePosts.every(p => p.timestamp < cutoff)) break;
     }
 
     return {
-      posts: mappedPosts,
+      posts: posts.slice(0, limit),
       source: 'lens',
     };
   } catch (error) {
@@ -86,78 +154,51 @@ export async function fetchLens(options: SearchOptions): Promise<FetchResult> {
   }
 }
 
-async function fetchLensPosts(limit: number, searchQuery?: string): Promise<LensPost[]> {
-  // Build the request object dynamically
-  const requestFields = [`pageSize: $pageSize`];
-  const variableDefs = [`$pageSize: PageSize!`];
-  const variables: Record<string, unknown> = {
-    pageSize: limitToLensEnum(limit),
-  };
+async function fetchLensPage(
+  searchQuery: string | undefined,
+  cursor: string | undefined,
+): Promise<{ items: (LensPost | Record<string, never>)[]; next?: string | null }> {
+  const request: Record<string, unknown> = { pageSize: 'FIFTY' };
+  if (searchQuery) request.filter = { searchQuery };
+  if (cursor) request.cursor = cursor;
 
-  if (searchQuery) {
-    requestFields.push(`filter: { searchQuery: $searchQuery }`);
-    variableDefs.push(`$searchQuery: String!`);
-    variables.searchQuery = searchQuery;
-  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  const graphqlQuery = `
-    query GetPosts(${variableDefs.join(', ')}) {
-      posts(request: { ${requestFields.join(', ')} }) {
-        items {
-          ... on Post {
-            slug
-            timestamp
-            author {
-              username {
-                value
-                localName
-              }
-              metadata {
-                name
-              }
-            }
-            metadata {
-              ... on TextOnlyMetadata { content }
-              ... on ArticleMetadata { content }
-              ... on LinkMetadata { content }
-            }
-            stats {
-              reactions
-              reposts
-              comments
-            }
-          }
-        }
-      }
+  try {
+    const response = await fetch(LENS_API, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        query: POSTS_QUERY,
+        variables: { request },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Lens API HTTP error: ${response.status}`);
     }
-  `;
 
-  const response = await fetch(LENS_API, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-    body: JSON.stringify({
-      query: graphqlQuery,
-      variables,
-    }),
-  });
+    const result = await response.json() as LensResponse;
 
-  if (!response.ok) {
-    throw new Error(`Lens API HTTP error: ${response.status}`);
+    if (result.errors?.length) {
+      throw new Error(result.errors[0].message);
+    }
+
+    return {
+      items: result.data?.posts?.items || [],
+      next: result.data?.posts?.pageInfo?.next,
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Lens API: no response after ${REQUEST_TIMEOUT_MS / 1000}s`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const result = await response.json() as LensResponse;
-
-  if (result.errors?.length) {
-    throw new Error(result.errors[0].message);
-  }
-
-  return result.data?.posts?.items || [];
-}
-
-function limitToLensEnum(limit: number): string {
-  if (limit <= 10) return 'TEN';
-  return 'FIFTY';
 }

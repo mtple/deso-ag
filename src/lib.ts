@@ -3,10 +3,9 @@ import { fetchHypersnap } from './fetchers/hypersnap.js';
 import { fetchLens } from './fetchers/lens.js';
 import { fetchNostr } from './fetchers/nostr.js';
 import { fetchBluesky } from './fetchers/bluesky.js';
-import { computeEngagementScore } from './formatters/output.js';
-import { deduplicatePosts, sortPosts } from './pipeline.js';
+import { mergeResults, buildMeta } from './pipeline.js';
 import { extractTermsBySource } from './terms.js';
-import type { SearchOptions, Post, FetchResult, AggregateResult, SortOrder, TermsResult } from './types.js';
+import type { Source, SearchOptions, FetchResult, AggregateResult, SortOrder, TermsResult } from './types.js';
 
 // Re-export types and utilities
 export { formatOutput, computeEngagementScore, formatTermsSummary } from './formatters/output.js';
@@ -17,65 +16,35 @@ export { fetchHypersnap } from './fetchers/hypersnap.js';
 export { fetchLens } from './fetchers/lens.js';
 export { fetchNostr } from './fetchers/nostr.js';
 export { fetchBluesky } from './fetchers/bluesky.js';
+export { fetchChannels } from './channels.js';
+export type { Channel, ChannelsResult } from './channels.js';
+export { SOURCES, TIMEFRAMES, OUTPUT_FORMATS, SORT_ORDERS } from './pipeline.js';
 export type { Source, Timeframe, OutputFormat, SortOrder, Post, SearchOptions, FetchResult, AggregateResult, Term, SourceTerms, TermsResult } from './types.js';
+
+const FETCHERS: Record<Source, (options: SearchOptions) => Promise<FetchResult>> = {
+  farcaster: fetchFarcaster,
+  hypersnap: fetchHypersnap,
+  lens: fetchLens,
+  nostr: fetchNostr,
+  bluesky: fetchBluesky,
+};
 
 /**
  * Aggregate posts from decentralized social networks.
- * This is the primary entry point for programmatic/agent usage.
+ * This is the primary entry point for programmatic/agent usage, and what the CLI runs.
  */
 export async function aggregate(options: SearchOptions): Promise<AggregateResult> {
   const sort: SortOrder = options.sort || (options.query ? 'relevance' : 'engagement');
 
   // Fetch from all requested sources in parallel
-  const fetchers: Promise<FetchResult>[] = [];
-  for (const source of options.sources) {
-    switch (source) {
-      case 'farcaster':
-        fetchers.push(fetchFarcaster(options));
-        break;
-      case 'hypersnap':
-        fetchers.push(fetchHypersnap(options));
-        break;
-      case 'lens':
-        fetchers.push(fetchLens(options));
-        break;
-      case 'nostr':
-        fetchers.push(fetchNostr(options));
-        break;
-      case 'bluesky':
-        fetchers.push(fetchBluesky(options));
-        break;
-    }
-  }
+  const results = await Promise.all(
+    [...new Set(options.sources)].map(source => FETCHERS[source](options)),
+  );
 
-  const results = await Promise.all(fetchers);
+  // Merge, deduplicate across sources, and sort
+  const posts = mergeResults(results, sort, options.query);
 
-  // Merge all posts
-  const allPosts: Post[] = [];
-  for (const result of results) {
-    allPosts.push(...result.posts);
-  }
-
-  // Deduplicate cross-source
-  const deduped = deduplicatePosts(allPosts);
-
-  // Sort
-  sortPosts(deduped, sort, options.query);
-
-  // Build meta
-  const meta: AggregateResult['meta'] = {
-    query: options.query,
-    sources: results.map(r => ({
-      name: r.source,
-      count: r.posts.length,
-      error: r.error,
-    })),
-    timeframe: options.timeframe,
-    fetchedAt: new Date().toISOString(),
-    totalPosts: deduped.length,
-  };
-
-  return { posts: deduped, meta };
+  return { posts, meta: buildMeta(results, options, posts.length) };
 }
 
 /**
@@ -86,6 +55,6 @@ export async function terms(
   options: SearchOptions,
   topN: number = 3,
 ): Promise<TermsResult> {
-  const { posts } = await aggregate(options);
+  const { posts } = await aggregate({ ...options, sort: 'engagement' });
   return extractTermsBySource(posts, topN, options.timeframe);
 }

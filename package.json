@@ -1,6 +1,6 @@
 {
   "name": "deso-ag",
-  "version": "1.0.6",
+  "version": "1.1.0",
   "description": "CLI tool for aggregating posts from decentralized social protocols (Farcaster, Hypersnap, Lens, Nostr, Bluesky)",
   "main": "dist/lib.js",
   "bin": {
@@ -16,15 +16,18 @@
   "files": [
     "dist",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "pnpm build",
+    "prepublishOnly": "pnpm build && pnpm test",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:live": "vitest run --config vitest.live.config.ts",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "farcaster",
@@ -46,19 +49,23 @@
     "url": "https://github.com/mtple/deso-ag"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.12"
   },
   "dependencies": {
-    "commander": "^12.1.0",
-    "dotenv": "^17.3.1",
-    "nostr-tools": "^2.7.0",
-    "websocket-polyfill": "^0.0.3"
+    "commander": "^15.1.0",
+    "dotenv": "^18.0.10",
+    "nostr-tools": "^2.26.1"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0",
-    "tsx": "^4.7.0",
-    "typescript": "^5.3.3",
-    "vitest": "^4.0.18"
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
   },
-  "packageManager": "pnpm@10.23.0+sha512.21c4e5698002ade97e4efe8b8b4a89a8de3c85a37919f957e7a0f30f38fbc5bbdd05980ffe29179b2fb6e6e691242e098d945d1601772cad0fef5fb6411e2a4b"
+  "packageManager": "pnpm@10.23.0+sha512.21c4e5698002ade97e4efe8b8b4a89a8de3c85a37919f957e7a0f30f38fbc5bbdd05980ffe29179b2fb6e6e691242e098d945d1601772cad0fef5fb6411e2a4b",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
 }

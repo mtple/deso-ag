@@ -158,4 +158,35 @@ describe('fetchFarcaster', () => {
     expect(result.posts).toEqual([]);
     expect(result.error).toContain('Network error');
   });
+
+  it('reads the 7d ranking for 48h and keeps only the last 48 hours', async () => {
+    mockFetch({
+      casts: [
+        makeNeynarCast({ hash: '0xinside', timestamp: '2025-06-14T00:00:00Z' }),
+        makeNeynarCast({ hash: '0xoutside', timestamp: '2025-06-12T00:00:00Z' }),
+      ],
+    });
+
+    const result = await fetchFarcaster({ ...baseOptions, timeframe: '48h' });
+
+    const url = new URL(vi.mocked(globalThis.fetch).mock.calls[0][0] as string);
+    expect(url.searchParams.get('time_window')).toBe('7d');
+    expect(result.posts.map(p => p.id)).toEqual(['0xinside']);
+  });
+
+  it('stops paging trending after a bounded number of pages', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({
+        casts: [makeNeynarCast({ timestamp: '2025-06-01T00:00:00Z' })],
+        next: { cursor: 'more' },
+      }),
+    });
+
+    const result = await fetchFarcaster({ ...baseOptions, timeframe: '48h' });
+
+    expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(10);
+    expect(result.posts).toEqual([]);
+  });
 });

@@ -108,8 +108,11 @@ export function sortPosts(posts: Post[], sort: SortOrder, query?: string): void 
   }
 }
 
-export function buildMeta(results: FetchResult[], options: SearchOptions): AggregateResult['meta'] {
-  const totalPosts = results.reduce((sum, r) => sum + r.posts.length, 0);
+export function buildMeta(
+  results: FetchResult[],
+  options: SearchOptions,
+  totalPosts: number = results.reduce((sum, r) => sum + r.posts.length, 0),
+): AggregateResult['meta'] {
   return {
     query: options.query,
     sources: results.map(r => ({
@@ -123,30 +126,52 @@ export function buildMeta(results: FetchResult[], options: SearchOptions): Aggre
   };
 }
 
-export function parseSources(input: string): Source[] {
-  const valid: Source[] = ['farcaster', 'hypersnap', 'lens', 'nostr', 'bluesky'];
-  const sources = input.split(',').map(s => s.trim().toLowerCase());
+export const SOURCES: readonly Source[] = ['farcaster', 'hypersnap', 'lens', 'nostr', 'bluesky'];
+export const TIMEFRAMES: readonly Timeframe[] = ['24h', '48h', 'week'];
+export const OUTPUT_FORMATS: readonly OutputFormat[] = ['json', 'markdown', 'summary', 'compact'];
+export const SORT_ORDERS: readonly SortOrder[] = ['engagement', 'recent', 'relevance'];
 
-  return sources.filter((s): s is Source => valid.includes(s as Source));
+function pickOne<T extends string>(input: string, valid: readonly T[], what: string): T {
+  const value = input.trim().toLowerCase() as T;
+  if (!valid.includes(value)) {
+    throw new Error(`Unknown ${what} "${input}". Choose from: ${valid.join(', ')}`);
+  }
+  return value;
+}
+
+/** Parse a comma-separated source list. Throws on anything it doesn't recognize. */
+export function parseSources(input: string): Source[] {
+  const requested = input.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  if (requested.length === 0) {
+    throw new Error(`No sources given. Choose from: ${SOURCES.join(', ')}`);
+  }
+
+  const unknown = requested.filter(s => !SOURCES.includes(s as Source));
+  if (unknown.length > 0) {
+    const label = unknown.length === 1 ? 'source' : 'sources';
+    throw new Error(`Unknown ${label} ${unknown.map(s => `"${s}"`).join(', ')}. Choose from: ${SOURCES.join(', ')}`);
+  }
+
+  return [...new Set(requested)] as Source[];
 }
 
 export function parseTimeframe(input: string): Timeframe {
-  const valid: Timeframe[] = ['24h', '48h', 'week'];
-  const tf = input.toLowerCase() as Timeframe;
-
-  return valid.includes(tf) ? tf : '24h';
+  return pickOne(input, TIMEFRAMES, 'timeframe');
 }
 
-export function parseFormat(input: string): OutputFormat {
-  const valid: OutputFormat[] = ['json', 'markdown', 'summary', 'compact'];
-  const fmt = input.toLowerCase() as OutputFormat;
-
-  return valid.includes(fmt) ? fmt : 'markdown';
+export function parseFormat(input: string, allowed: readonly OutputFormat[] = OUTPUT_FORMATS): OutputFormat {
+  return pickOne(input, allowed, 'format');
 }
 
 export function parseSortOrder(input: string): SortOrder {
-  const valid: SortOrder[] = ['engagement', 'recent', 'relevance'];
-  const sort = input.toLowerCase() as SortOrder;
+  return pickOne(input, SORT_ORDERS, 'sort order');
+}
 
-  return valid.includes(sort) ? sort : 'engagement';
+/** Parse a whole number of at least 1. */
+export function parsePositiveInt(input: string, what = 'number'): number {
+  const value = Number(input.trim());
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`${what} must be a whole number of at least 1 (got "${input}")`);
+  }
+  return value;
 }

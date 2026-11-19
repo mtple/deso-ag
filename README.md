@@ -6,6 +6,8 @@ Search and view content across **Farcaster**, **Hypersnap**, **Lens**, **Nostr**
 
 ## Installation
 
+Requires Node.js 22.12 or newer.
+
 ```bash
 npm install deso-ag
 ```
@@ -29,11 +31,11 @@ pnpm install
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `NEYNAR_API_KEY` | For Farcaster | None — Farcaster is skipped | Neynar API key. Get one free at [neynar.com](https://neynar.com) |
-| `BLUESKY_IDENTIFIER` | For Bluesky search | None — Bluesky search is skipped, trending still works | Your Bluesky handle (e.g. `user.bsky.social`) |
-| `BLUESKY_APP_PASSWORD` | For Bluesky search | None — Bluesky search is skipped, trending still works | App password from [bsky.app/settings/app-passwords](https://bsky.app/settings/app-passwords) |
+| `BLUESKY_IDENTIFIER` | For Bluesky search, if the public search endpoint refuses | None — search tries Bluesky's public endpoint first; trending always works | Your Bluesky handle (e.g. `user.bsky.social`) |
+| `BLUESKY_APP_PASSWORD` | For Bluesky search, if the public search endpoint refuses | None — as above | App password from [bsky.app/settings/app-passwords](https://bsky.app/settings/app-passwords) |
 | `HYPERSNAP_NODE_URL` | No | `https://haatz.quilibrium.com` | Hypersnap node to read from. Set it to your own node (e.g. `http://localhost:3381`) to skip the public one |
 
-Hypersnap, Lens, Nostr, and Bluesky trending work without any keys. Bluesky search requires authentication.
+Hypersnap, Lens, Nostr, and Bluesky trending work without any keys. Bluesky search uses your app password when it's set, and otherwise tries Bluesky's public endpoint, which may require a login.
 
 Add keys to your shell profile so they persist across sessions:
 
@@ -89,23 +91,24 @@ deso-ag terms -f json                      # machine-readable output
 
 ### `channels`
 
-Browse popular Farcaster channels.
+Browse popular channels, most-followed first. Reads Farcaster's channel list, and falls back to a Hypersnap node (no key) if that can't be reached.
 
 ```bash
 deso-ag channels
 deso-ag channels --limit 50
+deso-ag channels --format json
 ```
 
 ## Options
 
-All commands accept the following options (except where noted):
+All commands accept the following options (except where noted). An unknown value — a misspelled source, a timeframe like `month`, a limit of `0` — stops the command with an error that lists the valid values, rather than silently falling back.
 
 | Option | Description | Values | Default |
 |--------|-------------|--------|---------|
 | `-s, --sources` | Networks to query | `farcaster`, `hypersnap`, `lens`, `nostr`, `bluesky` (comma-separated) | `farcaster,hypersnap,lens,nostr,bluesky` (all) |
 | `-t, --timeframe` | Time range for posts | `24h`, `48h`, `week` | `24h` |
 | `-c, --channel` | Filter by channel | Any channel ID (Farcaster and Hypersnap) | none |
-| `-f, --format` | Output format | `json`, `markdown`, `summary`, `compact` | `markdown` (search), `summary` (trending) |
+| `-f, --format` | Output format | `json`, `markdown`, `summary`, `compact` (`terms`: `json`, `summary`, `compact`; `channels`: `json`, `summary`) | `markdown` (search), `summary` (trending, terms, channels) |
 | `-l, --limit` | Max posts per source | Any positive integer | `25` |
 | `-o, --sort` | Sort order | `engagement`, `recent`, `relevance` | `relevance` (search), `engagement` (trending) |
 | `-n, --top` | Top terms per source | Any positive integer (terms command only) | `3` |
@@ -113,7 +116,7 @@ All commands accept the following options (except where noted):
 ### Output Formats
 
 - **`markdown`** - Human-readable with headers, author info, and engagement stats. Default for `search`.
-- **`summary`** - Condensed overview with post counts and top content. Default for `trending`.
+- **`summary`** - Condensed overview with post counts and posts in `--sort` order. Default for `trending`.
 - **`json`** - Raw JSON array of post objects. Good for piping to other tools.
 - **`compact`** - Single JSON object with metadata envelope, engagement scores, and full content. Designed for AI agents.
 
@@ -256,9 +259,9 @@ deso-ag terms -f json -s farcaster,nostr -l 10
 |---------|-----|------|
 | **Farcaster** | [Neynar API](https://neynar.com) - trending feed and full-text search | `NEYNAR_API_KEY` required |
 | **Hypersnap** | [Hypersnap](https://hypersnap.org) node v2 API (Neynar-compatible) - trending feed, cast search, channel feeds. Links open in [Quilcast](https://quilcast.com) | None |
-| **Lens** | [Lens V3 GraphQL API](https://api.lens.xyz) - server-side search, recent posts | None |
-| **Nostr** | [nostr.wine trending API](https://docs.nostr.wine/api/trending) + public relays (relay.damus.io, nos.lol, relay.snort.social) | None |
-| **Bluesky** | [AT Protocol API](https://docs.bsky.app) - public "What's Hot" feed for trending, authenticated search via `app.bsky.feed.searchPosts` | None (trending), `BLUESKY_IDENTIFIER` + `BLUESKY_APP_PASSWORD` (search) |
+| **Lens** | [Lens V3 GraphQL API](https://api.lens.xyz) - server-side search, recent posts (text, image, video and other posts with captions) | None |
+| **Nostr** | [nostr.wine](https://docs.nostr.wine) trending and full-text search APIs + public relays (relay.damus.io, relay.primal.net, nos.lol, relay.snort.social) | None |
+| **Bluesky** | [AT Protocol API](https://docs.bsky.app) - public "What's Hot" feed for trending, `app.bsky.feed.searchPosts` for search | None (trending); search tries the public endpoint, then `BLUESKY_IDENTIFIER` + `BLUESKY_APP_PASSWORD` |
 
 All networks return engagement stats (likes, reposts, replies) and support timeframe filtering.
 
@@ -266,22 +269,26 @@ All networks return engagement stats (likes, reposts, replies) and support timef
 
 - **Farcaster**: Requires `NEYNAR_API_KEY`. Without it, Farcaster is skipped.
 - **Hypersnap**: A fork of Farcaster, so casts from before the fork can show up under both networks; cross-source dedup keeps the copy with more engagement. Search hits are filled in with likes/recasts/replies through an extra `cast/bulk` request, and keep zero engagement if that request fails. With `--channel`, a query is matched against the channel's recent casts rather than searched on the node. There's no 48h trending window, so `48h` reads the 7-day ranking and cuts it to 48h.
-- **Nostr**: Relay responses can be slow or inconsistent depending on network conditions.
+- **Nostr**: Relay responses can be slow or inconsistent. Search combines nostr.wine's full-text search (free tier: about 1 request per second) with a scan of the latest relay notes; hashtag queries (`#bitcoin`) use the relays' exact tag match. nostr.wine counts trending engagement over at most 48 hours, so `week` trending covers 48h. Search results carry no engagement counts.
+- **Bluesky**: Trending reads the "What's Hot" feed, which has no time window of its own; posts outside `--timeframe` are dropped locally. A login is reused for an hour rather than repeated on every search.
+- **Farcaster**: There's no 48h trending window, so `48h` reads the 7-day ranking and cuts it to 48h (as with Hypersnap).
 - **Rate limits**: All APIs have rate limits. For heavy usage, consider running your own infrastructure.
 
 ## Development
 
 ```bash
-pnpm build    # Build for production
-pnpm test     # Run tests
+pnpm build       # Build for production
+pnpm typecheck   # Type-check without emitting
+pnpm test        # Unit tests (no network needed; what CI runs)
+pnpm test:live   # CLI tests against the real networks (needs network, and .env keys for Farcaster)
 ```
 
 ## Tech Stack
 
 - TypeScript
 - Commander.js for CLI
-- nostr-tools for Nostr protocol
-- Native fetch for HTTP requests
+- nostr-tools for NIP-19 (npub/note) encoding
+- Node's built-in fetch and WebSocket
 
 ## License
 

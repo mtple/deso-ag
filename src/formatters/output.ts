@@ -149,25 +149,19 @@ function formatSummary(posts: Post[]): string {
     lines.push('');
   }
 
-  // All posts sorted by engagement (posts without engagement go last, sorted by time)
-  const allPosts = [...posts]
-    .sort((a, b) => {
-      const aScore = (a.engagement?.likes || 0) + (a.engagement?.reposts || 0) * 2;
-      const bScore = (b.engagement?.likes || 0) + (b.engagement?.reposts || 0) * 2;
-      if (aScore !== bScore) return bScore - aScore;
-      return b.timestamp.getTime() - a.timestamp.getTime();
-    });
-  if (allPosts.length > 0) {
-    lines.push(`\n🔥 All Posts by Engagement:`);
+  // Posts in the order they were given (the caller has already applied --sort)
+  if (posts.length > 0) {
+    lines.push(`\n🔥 Posts:`);
     lines.push(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
-    for (let i = 0; i < allPosts.length; i++) {
-      const post = allPosts[i];
+    for (let i = 0; i < posts.length; i++) {
+      const post = posts[i];
       const emoji = getSourceEmoji(post.source);
       const preview = post.content.slice(0, 400).replace(/\n/g, ' ');
       const engagement = [];
       if (post.engagement?.likes) engagement.push(`❤️${post.engagement.likes}`);
       if (post.engagement?.reposts) engagement.push(`🔁${post.engagement.reposts}`);
+      if (post.engagement?.replies) engagement.push(`💬${post.engagement.replies}`);
 
       lines.push(`${i + 1}. ${emoji} @${post.author.username}`);
       lines.push(`   "${preview}${post.content.length > 400 ? '...' : ''}"`);

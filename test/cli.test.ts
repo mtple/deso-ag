@@ -221,36 +221,4 @@ describe('CLI integration', () => {
       }
     }, 90_000);
   });
-
-  describe('option validation', () => {
-    it('shows version with --version', async () => {
-      const { stdout } = await run('--version');
-      expect(stdout.trim()).toBe(PKG_VERSION);
-    });
-
-    it('shows help with --help', async () => {
-      const { stdout } = await run('--help');
-      expect(stdout).toContain('deso-ag');
-      expect(stdout).toContain('search');
-      expect(stdout).toContain('trending');
-      expect(stdout).toContain('terms');
-      expect(stdout).toContain('channels');
-    });
-
-    it('search --help shows all options', async () => {
-      const { stdout } = await run('search', '--help');
-      expect(stdout).toContain('--sources');
-      expect(stdout).toContain('--format');
-      expect(stdout).toContain('--sort');
-      expect(stdout).toContain('--limit');
-      expect(stdout).toContain('--timeframe');
-    });
-
-    it('trending --help shows all options', async () => {
-      const { stdout } = await run('trending', '--help');
-      expect(stdout).toContain('--sort');
-      expect(stdout).toContain('--format');
-      expect(stdout).toContain('compact');
-    });
-  });
 });

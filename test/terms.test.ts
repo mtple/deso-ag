@@ -43,6 +43,17 @@ describe('tokenize', () => {
     expect(unigrams).toContain('defi');
   });
 
+  it('keeps accented and non-Latin words whole', () => {
+    const { unigrams } = tokenize('café política 東京タワー');
+    expect(unigrams).toEqual(['café', 'política', '東京タワー']);
+  });
+
+  it('strips curly-apostrophe possessives too', () => {
+    const { unigrams } = tokenize('vitalik’s roadmap');
+    expect(unigrams).toContain('vitalik');
+    expect(unigrams).not.toContain('vitalik’s');
+  });
+
   it('strips possessives', () => {
     const { unigrams } = tokenize("ethereum's scalability");
     expect(unigrams).toContain('ethereum');

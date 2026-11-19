@@ -77,8 +77,8 @@ describe('fetchLens', () => {
 
     const calls = vi.mocked(globalThis.fetch).mock.calls;
     const body = JSON.parse(calls[0][1]?.body as string);
-    expect(body.variables.searchQuery).toBe('ethereum');
-    expect(body.query).toContain('searchQuery');
+    expect(body.variables.request.filter.searchQuery).toBe('ethereum');
+    expect(body.query).toContain('PostsRequest');
   });
 
   it('omits searchQuery when no query provided', async () => {
@@ -171,5 +171,79 @@ describe('fetchLens', () => {
 
     expect(result.posts).toEqual([]);
     expect(result.error).toContain('Network error');
+  });
+
+  it('returns no more than --limit posts', async () => {
+    mockFetch(makeLensResponse(Array.from({ length: 50 }, (_, i) => makeLensPost({ slug: `p${i}` }))));
+
+    const result = await fetchLens({ ...baseOptions, limit: 25 });
+
+    expect(result.posts).toHaveLength(25);
+  });
+
+  it('asks for captions on image, video and other post types', async () => {
+    mockFetch(makeLensResponse([]));
+
+    await fetchLens(baseOptions);
+
+    const body = JSON.parse(vi.mocked(globalThis.fetch).mock.calls[0][1]?.body as string);
+    for (const type of ['ImageMetadata', 'VideoMetadata', 'AudioMetadata', 'TextOnlyMetadata']) {
+      expect(body.query).toContain(`... on ${type} { content }`);
+    }
+  });
+
+  it('pages with the cursor until it has enough posts', async () => {
+    const fn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ data: { posts: { items: [makeLensPost({ slug: 'a' })], pageInfo: { next: 'cur2' } } } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ data: { posts: { items: [makeLensPost({ slug: 'b' })], pageInfo: { next: null } } } }),
+      });
+    globalThis.fetch = fn;
+
+    const result = await fetchLens({ ...baseOptions, limit: 5 });
+
+    expect(fn).toHaveBeenCalledTimes(2);
+    const second = JSON.parse(fn.mock.calls[1][1].body as string);
+    expect(second.variables.request.cursor).toBe('cur2');
+    expect(result.posts.map(p => p.id)).toEqual(['a', 'b']);
+  });
+
+  it('stops paging the latest feed once a page is older than the timeframe', async () => {
+    const old = makeLensPost({ slug: 'old', timestamp: '2025-06-10T00:00:00Z' });
+    const fn = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: { posts: { items: [old], pageInfo: { next: 'more' } } } }),
+    });
+    globalThis.fetch = fn;
+
+    const result = await fetchLens(baseOptions);
+
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(result.posts).toEqual([]);
+  });
+
+  it('skips reposts (items that are not posts)', async () => {
+    mockFetch(makeLensResponse([{}, makeLensPost({ slug: 'real' })]));
+
+    const result = await fetchLens(baseOptions);
+
+    expect(result.posts.map(p => p.id)).toEqual(['real']);
+  });
+
+  it('reports a timeout in plain words', async () => {
+    const abort = new Error('This operation was aborted');
+    abort.name = 'AbortError';
+    globalThis.fetch = vi.fn().mockRejectedValue(abort);
+
+    const result = await fetchLens(baseOptions);
+
+    expect(result.error).toBe('Lens API: no response after 10s');
   });
 });

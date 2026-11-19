@@ -10,6 +10,7 @@ import {
   parseTimeframe,
   parseFormat,
   parseSortOrder,
+  parsePositiveInt,
 } from '../src/pipeline.js';
 import { makePost, makeFetchResult } from './helpers.js';
 
@@ -197,6 +198,12 @@ describe('mergeResults', () => {
 });
 
 describe('buildMeta', () => {
+  it('uses the given totalPosts (the count after dedup) when passed', () => {
+    const results = [makeFetchResult('farcaster', [makePost({ id: '1' }), makePost({ id: '2' })])];
+    const meta = buildMeta(results, { sources: ['farcaster'], timeframe: '24h' }, 1);
+    expect(meta.totalPosts).toBe(1);
+  });
+
   it('computes totalPosts from all results', () => {
     const results = [
       makeFetchResult('farcaster', [makePost({ id: '1' }), makePost({ id: '2' })]),
@@ -255,8 +262,13 @@ describe('parseSources', () => {
     expect(parseSources('farcaster, lens, nostr, bluesky')).toEqual(['farcaster', 'lens', 'nostr', 'bluesky']);
   });
 
-  it('filters invalid sources', () => {
-    expect(parseSources('farcaster,twitter,lens')).toEqual(['farcaster', 'lens']);
+  it('rejects unknown sources instead of dropping them', () => {
+    expect(() => parseSources('farcaster,twitter,lens')).toThrow('Unknown source "twitter". Choose from: farcaster, hypersnap, lens, nostr, bluesky');
+    expect(() => parseSources('farcastr,lenz')).toThrow('Unknown sources "farcastr", "lenz"');
+  });
+
+  it('rejects an empty list', () => {
+    expect(() => parseSources(' , ')).toThrow('No sources given');
   });
 
   it('handles single source', () => {
@@ -264,12 +276,8 @@ describe('parseSources', () => {
     expect(parseSources('hypersnap')).toEqual(['hypersnap']);
   });
 
-  it('is case-insensitive', () => {
-    expect(parseSources('FARCASTER,Lens')).toEqual(['farcaster', 'lens']);
-  });
-
-  it('returns empty for all invalid', () => {
-    expect(parseSources('twitter,mastodon')).toEqual([]);
+  it('is case-insensitive and drops repeats', () => {
+    expect(parseSources('FARCASTER,Lens,lens')).toEqual(['farcaster', 'lens']);
   });
 });
 
@@ -280,9 +288,9 @@ describe('parseTimeframe', () => {
     expect(parseTimeframe('week')).toBe('week');
   });
 
-  it('defaults to 24h for invalid input', () => {
-    expect(parseTimeframe('1h')).toBe('24h');
-    expect(parseTimeframe('month')).toBe('24h');
+  it('rejects invalid input', () => {
+    expect(() => parseTimeframe('1h')).toThrow('Unknown timeframe "1h". Choose from: 24h, 48h, week');
+    expect(() => parseTimeframe('month')).toThrow('Unknown timeframe');
   });
 
   it('is case-insensitive', () => {
@@ -298,9 +306,12 @@ describe('parseFormat', () => {
     expect(parseFormat('compact')).toBe('compact');
   });
 
-  it('defaults to markdown for invalid input', () => {
-    expect(parseFormat('xml')).toBe('markdown');
-    expect(parseFormat('csv')).toBe('markdown');
+  it('rejects invalid input', () => {
+    expect(() => parseFormat('xml')).toThrow('Unknown format "xml"');
+  });
+
+  it('can be limited to the formats a command supports', () => {
+    expect(() => parseFormat('markdown', ['json', 'summary', 'compact'])).toThrow('Choose from: json, summary, compact');
   });
 
   it('is case-insensitive', () => {
@@ -316,13 +327,24 @@ describe('parseSortOrder', () => {
     expect(parseSortOrder('relevance')).toBe('relevance');
   });
 
-  it('defaults to engagement for invalid input', () => {
-    expect(parseSortOrder('alphabetical')).toBe('engagement');
-    expect(parseSortOrder('random')).toBe('engagement');
+  it('rejects invalid input', () => {
+    expect(() => parseSortOrder('alphabetical')).toThrow('Unknown sort order "alphabetical"');
   });
 
   it('is case-insensitive', () => {
     expect(parseSortOrder('RECENT')).toBe('recent');
     expect(parseSortOrder('Relevance')).toBe('relevance');
+  });
+});
+
+describe('parsePositiveInt', () => {
+  it('parses whole numbers', () => {
+    expect(parsePositiveInt('25')).toBe(25);
+  });
+
+  it('rejects zero, negatives, fractions and words', () => {
+    for (const bad of ['0', '-3', '2.5', 'ten', '']) {
+      expect(() => parsePositiveInt(bad, 'limit')).toThrow('limit must be a whole number of at least 1');
+    }
   });
 });

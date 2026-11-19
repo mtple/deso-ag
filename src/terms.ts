@@ -40,8 +40,8 @@ interface TokenEntry {
  */
 function stripPunctuation(text: string): string {
   return text
-    .replace(/'s\b/g, '')      // possessives
-    .replace(/[^\w\s]/g, ' ')  // punctuation → space
+    .replace(/['’]s(?=\s|$)/gu, '')        // possessives
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')  // punctuation and emoji → space, keeping letters in any script
     .replace(/\s+/g, ' ')
     .trim();
 }

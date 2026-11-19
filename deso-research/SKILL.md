@@ -39,16 +39,16 @@ npm install -g deso-ag
 
 ### API Keys (Optional)
 
-deso-ag works without any keys — Hypersnap, Lens, Nostr, and Bluesky trending all function keyless. For full functionality, these environment variables unlock additional networks:
+deso-ag works without any keys — Hypersnap, Lens, Nostr, and Bluesky trending all function keyless. It needs Node.js 22.12 or newer. For full functionality, these environment variables unlock additional networks:
 
 | Variable | Unlocks | How to Get |
 |----------|---------|------------|
 | `NEYNAR_API_KEY` | Farcaster search + trending | Free at neynar.com |
-| `BLUESKY_IDENTIFIER` | Bluesky search | Your handle (e.g. user.bsky.social) |
-| `BLUESKY_APP_PASSWORD` | Bluesky search | bsky.app/settings/app-passwords |
+| `BLUESKY_IDENTIFIER` | Bluesky search (when the public search endpoint refuses) | Your handle (e.g. user.bsky.social) |
+| `BLUESKY_APP_PASSWORD` | Bluesky search (when the public search endpoint refuses) | bsky.app/settings/app-passwords |
 | `HYPERSNAP_NODE_URL` | Reading Hypersnap from a node other than the public one | Your node's HTTP API, e.g. http://localhost:3381 |
 
-Without a key, that network is silently skipped. Everything else works normally.
+Without a key, that network is skipped with a warning on stderr. Everything else works normally.
 
 Check which networks are available before running commands:
 
@@ -114,11 +114,14 @@ deso-ag terms --top 5 --sources farcaster --timeframe week --format json
 deso-ag terms --top 5 --sources farcaster,nostr --format json
 ```
 
-### 4. Browse Farcaster Channels
+### 4. Browse Channels
 
 ```bash
 deso-ag channels --limit 20
+deso-ag channels --format json      # machine-readable
 ```
+
+Reads Farcaster's channel list, and falls back to a Hypersnap node if that can't be reached (a warning on stderr says so).
 
 ## Output Handling
 
@@ -207,7 +210,7 @@ holdings. Early stage but worth watching.
 | `search [query]` | Find posts about a topic | relevance | markdown |
 | `trending` | Popular content right now | engagement | summary |
 | `terms` | Top discussion terms | — | — |
-| `channels` | Browse Farcaster channels | — | — |
+| `channels` | Browse channels (Farcaster, Hypersnap fallback) | followers | summary |
 
 ### Common Options
 
@@ -226,7 +229,8 @@ For the full command reference with output schemas and library usage, see `refer
 ## Error Handling
 
 - If deso-ag is not found, install it: `npm install -g deso-ag`
-- If no results return for a network, that network's API key is likely missing — inform the user
-- Nostr can be slow or inconsistent — retry once if it times out
+- Invalid option values (an unknown source, timeframe, format or sort, or a limit below 1) make deso-ag exit with an error that lists the valid values — fix the flag and rerun
+- If no results return for a network, check stderr: a missing API key or an API failure is reported there as `⚠️  <network>: ...` — inform the user
+- Nostr can be slow or inconsistent — retry once if it times out. Nostr search uses nostr.wine's full-text search plus a scan of recent relay notes; its `week` trending covers 48h at most
 - Hypersnap is a fork of Farcaster: older casts can appear on both, and the two are separate networks since the fork. Treat them as distinct sources when comparing
 - If you hit rate limit errors, let the user know and suggest they run their own infrastructure for heavy usage

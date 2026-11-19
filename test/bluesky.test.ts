@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchBluesky } from '../src/fetchers/bluesky.js';
+import { fetchBluesky, resetBlueskySession } from '../src/fetchers/bluesky.js';
 import type { SearchOptions } from '../src/types.js';
 
 function makeBskyPost(overrides: Record<string, unknown> = {}) {
@@ -32,6 +32,7 @@ describe('fetchBluesky', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2025-06-15T12:00:00Z'));
+    resetBlueskySession();
     process.env.BLUESKY_IDENTIFIER = 'test.bsky.social';
     process.env.BLUESKY_APP_PASSWORD = 'test-app-password';
   });
@@ -135,9 +136,14 @@ describe('fetchBluesky', () => {
   });
 
   describe('search (with query)', () => {
-    it('returns error when credentials are missing', async () => {
+    beforeEach(() => {
+      resetBlueskySession();
+    });
+
+    it('returns error when credentials are missing and public search is refused', async () => {
       delete process.env.BLUESKY_IDENTIFIER;
       delete process.env.BLUESKY_APP_PASSWORD;
+      mockFetch({ error: 'AuthMissing' }, false, 403);
 
       const result = await fetchBluesky({ ...baseOptions, query: 'ethereum' });
 
@@ -161,6 +167,56 @@ describe('fetchBluesky', () => {
       expect(headers['Authorization']).toBe('Bearer test-jwt-token');
     });
 
+    it('searches the public AppView without credentials when it allows it', async () => {
+      delete process.env.BLUESKY_IDENTIFIER;
+      delete process.env.BLUESKY_APP_PASSWORD;
+      mockFetch({ posts: [makeBskyPost()] });
+
+      const result = await fetchBluesky({ ...baseOptions, query: 'ethereum' });
+
+      const calls = vi.mocked(globalThis.fetch).mock.calls;
+      expect(calls).toHaveLength(1);
+      const url = new URL(calls[0][0] as string);
+      expect(url.origin).toBe('https://public.api.bsky.app');
+      const headers = calls[0][1]?.headers as Record<string, string>;
+      expect(headers['Authorization']).toBeUndefined();
+      expect(result.posts).toHaveLength(1);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('reuses the login across searches', async () => {
+      mockSearchFlow({ posts: [] });
+
+      await fetchBluesky({ ...baseOptions, query: 'one' });
+      await fetchBluesky({ ...baseOptions, query: 'two' });
+
+      const calls = vi.mocked(globalThis.fetch).mock.calls.map(c => c[0] as string);
+      expect(calls.filter(u => u.includes('createSession'))).toHaveLength(1);
+      expect(calls.filter(u => u.includes('searchPosts'))).toHaveLength(2);
+    });
+
+    it('logs in again once when the cached token is rejected', async () => {
+      let searches = 0;
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('createSession')) {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(SESSION_RESPONSE) });
+        }
+        searches++;
+        const expired = searches === 1;
+        return Promise.resolve({
+          ok: !expired,
+          status: expired ? 400 : 200,
+          json: () => Promise.resolve(expired ? { error: 'ExpiredToken' } : { posts: [makeBskyPost()] }),
+        });
+      });
+
+      const result = await fetchBluesky({ ...baseOptions, query: 'ethereum' });
+
+      const calls = vi.mocked(globalThis.fetch).mock.calls.map(c => c[0] as string);
+      expect(calls.filter(u => u.includes('createSession'))).toHaveLength(2);
+      expect(result.posts).toHaveLength(1);
+    });
+
     it('sends query and sort=top', async () => {
       mockSearchFlow({ posts: [] });
 
@@ -172,14 +228,24 @@ describe('fetchBluesky', () => {
       expect(searchUrl.searchParams.get('sort')).toBe('top');
     });
 
-    it('does not send since parameter', async () => {
+    it('limits search to the timeframe with since', async () => {
       mockSearchFlow({ posts: [] });
 
       await fetchBluesky({ ...baseOptions, query: 'test' });
 
       const calls = vi.mocked(globalThis.fetch).mock.calls;
       const searchUrl = new URL(calls[1][0] as string);
-      expect(searchUrl.searchParams.get('since')).toBeNull();
+      expect(searchUrl.searchParams.get('since')).toBe('2025-06-14T12:00:00.000Z');
+    });
+
+    it('uses sort=latest for --sort recent', async () => {
+      mockSearchFlow({ posts: [] });
+
+      await fetchBluesky({ ...baseOptions, query: 'test', sort: 'recent' });
+
+      const calls = vi.mocked(globalThis.fetch).mock.calls;
+      const searchUrl = new URL(calls[1][0] as string);
+      expect(searchUrl.searchParams.get('sort')).toBe('latest');
     });
 
     it('maps search posts to Post shape', async () => {

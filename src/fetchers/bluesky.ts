@@ -45,6 +45,31 @@ interface BskySession {
   did: string;
 }
 
+class BskyHttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
+// Access tokens last about two hours; reuse one for an hour instead of logging in on every search
+const SESSION_TTL_MS = 60 * 60 * 1000;
+let cachedSession: { key: string; accessJwt: string; expiresAt: number } | undefined;
+
+/** Forget the cached Bluesky login (mainly for tests). */
+export function resetBlueskySession(): void {
+  cachedSession = undefined;
+}
+
+async function getAccessToken(identifier: string, password: string, forceNew = false): Promise<string> {
+  const key = identifier;
+  if (!forceNew && cachedSession && cachedSession.key === key && cachedSession.expiresAt > Date.now()) {
+    return cachedSession.accessJwt;
+  }
+  const session = await createSession(identifier, password);
+  cachedSession = { key, accessJwt: session.accessJwt, expiresAt: Date.now() + SESSION_TTL_MS };
+  return session.accessJwt;
+}
+
 function bskyPostToPost(post: BskyPost): Post {
   // Extract rkey from AT URI: at://did/app.bsky.feed.post/rkey
   const rkey = post.uri.split('/').pop() || '';
@@ -129,32 +154,37 @@ async function createSession(identifier: string, password: string): Promise<Bsky
 }
 
 async function searchBluesky(
-  accessJwt: string,
+  accessJwt: string | undefined,
   query: string,
   limit: number,
+  since: Date,
+  sort: 'top' | 'latest',
 ): Promise<Post[]> {
   const params = new URLSearchParams({
     q: query,
     limit: String(Math.min(limit, 100)),
-    sort: 'top',
+    sort,
+    // Without this, `top` ranks all-time posts and the timeframe cut leaves almost nothing
+    since: since.toISOString(),
   });
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
-    const response = await fetch(`${BSKY_APPVIEW}/app.bsky.feed.searchPosts?${params}`, {
+    const base = accessJwt ? BSKY_APPVIEW : BSKY_PUBLIC;
+    const headers: Record<string, string> = { 'Accept': 'application/json' };
+    if (accessJwt) headers['Authorization'] = `Bearer ${accessJwt}`;
+
+    const response = await fetch(`${base}/app.bsky.feed.searchPosts?${params}`, {
       signal: controller.signal,
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': `Bearer ${accessJwt}`,
-      },
+      headers,
     });
 
     clearTimeout(timeout);
 
     if (!response.ok) {
-      throw new Error(`Bluesky search API: ${response.status}`);
+      throw new BskyHttpError(`Bluesky search API: ${response.status}`, response.status);
     }
 
     const data = await response.json() as BskySearchResponse;
@@ -175,19 +205,35 @@ export async function fetchBluesky(options: SearchOptions): Promise<FetchResult>
     let posts: Post[];
 
     if (options.query) {
-      // Search requires authentication
       const identifier = process.env.BLUESKY_IDENTIFIER;
       const appPassword = process.env.BLUESKY_APP_PASSWORD;
-      if (!identifier || !appPassword) {
-        return {
-          posts: [],
-          source: 'bluesky',
-          error: 'Bluesky search requires BLUESKY_IDENTIFIER and BLUESKY_APP_PASSWORD. Create an app password at https://bsky.app/settings/app-passwords',
-        };
-      }
+      const sort = options.sort === 'recent' ? 'latest' : 'top';
 
-      const session = await createSession(identifier, appPassword);
-      posts = await searchBluesky(session.accessJwt, options.query, limit);
+      if (identifier && appPassword) {
+        let token = await getAccessToken(identifier, appPassword);
+        try {
+          posts = await searchBluesky(token, options.query, limit, cutoff, sort);
+        } catch (error) {
+          // A cached token can expire early (password change, server restart): log in again once
+          if (!(error instanceof BskyHttpError) || (error.status !== 400 && error.status !== 401)) throw error;
+          token = await getAccessToken(identifier, appPassword, true);
+          posts = await searchBluesky(token, options.query, limit, cutoff, sort);
+        }
+      } else {
+        // Try the public AppView first; it may refuse search without a login
+        try {
+          posts = await searchBluesky(undefined, options.query, limit, cutoff, sort);
+        } catch (error) {
+          if (error instanceof BskyHttpError && (error.status === 401 || error.status === 403)) {
+            return {
+              posts: [],
+              source: 'bluesky',
+              error: 'Bluesky search requires BLUESKY_IDENTIFIER and BLUESKY_APP_PASSWORD. Create an app password at https://bsky.app/settings/app-passwords',
+            };
+          }
+          throw error;
+        }
+      }
     } else {
       // Trending uses the public "What's Hot" feed — no auth needed
       posts = await fetchWhatsHot(limit);

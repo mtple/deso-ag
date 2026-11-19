@@ -363,6 +363,11 @@ describe('fetchNostr', () => {
   });
 
   describe('search (with query)', () => {
+    beforeEach(() => {
+      // nostr.wine search finds nothing, so these exercise the relay scan
+      mockFetch({ data: [] });
+    });
+
     it('opens WebSocket connections to relays when query provided', async () => {
       const promise = fetchNostr({ ...baseOptions, query: 'bitcoin' });
       await vi.advanceTimersByTimeAsync(50);
@@ -577,5 +582,125 @@ describe('fetchNostr', () => {
 
       expect(result.posts[0].timestamp).toEqual(new Date('2025-06-15T10:00:00Z'));
     });
+  });
+
+  describe('nostr.wine full-text search', () => {
+    const PUBKEY = '3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d';
+    const EVENT_ID = 'fe964e758903360f28d8424d092da8494ed207cba823110be3a57dfe4b578734';
+
+    async function settle<T>(promise: Promise<T>): Promise<T> {
+      await vi.advanceTimersByTimeAsync(50);
+      for (const ws of MockWebSocket.instances) {
+        if (ws.readyState === MockWebSocket.OPEN) ws.receiveMessage(['EOSE', 'sub']);
+      }
+      await vi.advanceTimersByTimeAsync(50);
+      sendEoseToProfileSocket();
+      return promise;
+    }
+
+    it('asks nostr.wine for kind-1 notes inside the timeframe', async () => {
+      mockFetch({ data: [] });
+
+      await settle(fetchNostr({ ...baseOptions, query: 'zap splits' }));
+
+      const url = new URL(vi.mocked(globalThis.fetch).mock.calls[0][0] as string);
+      expect(url.origin + url.pathname).toBe('https://api.nostr.wine/search');
+      expect(url.searchParams.get('query')).toBe('zap splits');
+      expect(url.searchParams.get('kind')).toBe('1');
+      expect(url.searchParams.get('since')).toBe(String(Math.floor(new Date('2025-06-14T12:00:00Z').getTime() / 1000)));
+      expect(url.searchParams.get('sort')).toBe('relevance');
+    });
+
+    it('sorts by time on nostr.wine when --sort recent', async () => {
+      mockFetch({ data: [] });
+
+      await settle(fetchNostr({ ...baseOptions, query: 'bitcoin', sort: 'recent' }));
+
+      const url = new URL(vi.mocked(globalThis.fetch).mock.calls[0][0] as string);
+      expect(url.searchParams.get('sort')).toBe('time');
+    });
+
+    it('returns nostr.wine hits even when relays have nothing', async () => {
+      mockFetch({ data: [makeNostrEvent({ id: EVENT_ID, pubkey: PUBKEY, content: 'lightning zap splits are live' })] });
+
+      const result = await settle(fetchNostr({ ...baseOptions, query: 'zap' }));
+
+      expect(result.posts.map(p => p.id)).toEqual([EVENT_ID]);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('merges nostr.wine and relay hits without duplicates', async () => {
+      const shared = makeNostrEvent({ id: 'aa01', content: 'bitcoin from both' });
+      mockFetch({ data: [shared] });
+
+      const promise = fetchNostr({ ...baseOptions, query: 'bitcoin' });
+      await vi.advanceTimersByTimeAsync(50);
+      sendEventsToRelaySockets([
+        ['EVENT', 'sub', shared],
+        ['EVENT', 'sub', makeNostrEvent({ id: 'bb02', content: 'bitcoin only on a relay' })],
+      ]);
+      await vi.advanceTimersByTimeAsync(50);
+      sendEoseToProfileSocket();
+      const result = await promise;
+
+      expect(result.posts.map(p => p.id).sort()).toEqual(['aa01', 'bb02']);
+    });
+
+    it('leaves hashtag queries to the relay #t filter', async () => {
+      mockFetch({ data: [] });
+
+      await settle(fetchNostr({ ...baseOptions, query: '#bitcoin' }));
+
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    });
+
+    it('reports a nostr.wine failure only when nothing was found', async () => {
+      mockFetch({}, false, 429);
+
+      const result = await settle(fetchNostr({ ...baseOptions, query: 'bitcoin' }));
+
+      expect(result.posts).toEqual([]);
+      expect(result.error).toContain('nostr.wine search API: 429');
+    });
+
+    it('keeps relay hits quietly when nostr.wine fails', async () => {
+      mockFetch({}, false, 503);
+
+      const promise = fetchNostr({ ...baseOptions, query: 'bitcoin' });
+      await vi.advanceTimersByTimeAsync(50);
+      sendEventsToRelaySockets([['EVENT', 'sub', makeNostrEvent({ id: 'cc03', content: 'bitcoin on relays' })]]);
+      await vi.advanceTimersByTimeAsync(50);
+      sendEoseToProfileSocket();
+      const result = await promise;
+
+      expect(result.posts).toHaveLength(1);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('applies the limit after matching', async () => {
+      mockFetch({
+        data: Array.from({ length: 8 }, (_, i) => makeNostrEvent({ id: `dd0${i}`, content: `bitcoin note ${i}` })),
+      });
+
+      const result = await settle(fetchNostr({ ...baseOptions, limit: 3, query: 'bitcoin' }));
+
+      expect(result.posts).toHaveLength(3);
+    });
+
+    it('builds real NIP-19 links (npub and note)', async () => {
+      mockFetch({ data: [makeNostrEvent({ id: EVENT_ID, pubkey: PUBKEY, content: 'gm bitcoin' })] });
+
+      const result = await settle(fetchNostr({ ...baseOptions, query: 'bitcoin' }));
+
+      const post = result.posts[0];
+      expect(post.author.profileUrl).toBe('https://njump.me/npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6');
+      expect(post.url).toMatch(/^https:\/\/njump\.me\/note1[02-9ac-hj-np-z]{58}$/);
+      expect(post.author.username).toBe('npub180cvv07...');
+    });
+  });
+
+  it('does not use the dead relay.nostr.band', async () => {
+    const { RELAYS } = await import('../src/fetchers/nostr.js');
+    expect(RELAYS.some(r => r.includes('nostr.band'))).toBe(false);
   });
 });

@@ -3,6 +3,8 @@ import { getTimeframeCutoff } from '../utils/time.js';
 import { matchesQuery } from '../utils/search.js';
 
 const NEYNAR_API = 'https://api.neynar.com/v2/farcaster';
+const TRENDING_PAGE_SIZE = 10; // Neynar's trending feed caps a page at 10
+const MAX_TRENDING_PAGES = 10;
 
 interface NeynarCast {
   hash: string;
@@ -57,7 +59,7 @@ function neynarCastToPost(cast: NeynarCast): Post {
 function mapTimeframeToWindow(timeframe: string): string {
   switch (timeframe) {
     case '24h': return '24h';
-    case '48h': return '24h'; // closest available
+    case '48h': return '7d'; // no 48h window; take the 7d ranking and cut it to 48h
     case 'week': return '7d';
     default: return '24h';
   }
@@ -82,7 +84,7 @@ export async function fetchFarcaster(options: SearchOptions): Promise<FetchResul
     if (options.query) {
       posts = await fetchNeynarSearch(apiKey, options.query, limit, options.channel);
     } else {
-      posts = await fetchNeynarTrending(apiKey, limit, options.timeframe, options.channel);
+      posts = await fetchNeynarTrending(apiKey, limit, options.timeframe, cutoff, options.channel);
     }
 
     // Apply timeframe cutoff
@@ -116,15 +118,16 @@ async function fetchNeynarTrending(
   apiKey: string,
   limit: number,
   timeframe: string,
+  cutoff: Date,
   channel?: string,
 ): Promise<Post[]> {
   const timeWindow = mapTimeframeToWindow(timeframe);
   const allPosts: Post[] = [];
   let cursor: string | undefined;
 
-  // Neynar trending limit is 1-10 per request, so paginate
-  while (allPosts.length < limit) {
-    const batchSize = Math.min(10, limit - allPosts.length);
+  // Neynar trending limit is 1-10 per request, so paginate, keeping only casts inside the timeframe
+  for (let page = 0; page < MAX_TRENDING_PAGES && allPosts.length < limit; page++) {
+    const batchSize = timeframe === '48h' ? TRENDING_PAGE_SIZE : Math.min(TRENDING_PAGE_SIZE, limit - allPosts.length);
     const params = new URLSearchParams({
       limit: String(batchSize),
       time_window: timeWindow,
@@ -160,7 +163,8 @@ async function fetchNeynarTrending(
       if (casts.length === 0) break;
 
       for (const cast of casts) {
-        allPosts.push(neynarCastToPost(cast));
+        const post = neynarCastToPost(cast);
+        if (post.timestamp >= cutoff) allPosts.push(post);
       }
 
       cursor = data.next?.cursor;
